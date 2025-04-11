@@ -78,7 +78,7 @@ const TransactionDetail = ({
   const handleShare = async () => {
     try {
       await Share.share({
-        message: `Transaction Receipt\nID: ${transactionId}\nDate: ${date} ${time}\nTotal: $${total.toFixed(2)}`,
+        message: `Transaction Receipt\nID: ${transactionId}\nDate: ${date} ${time}\nTotal: Rp ${total.toLocaleString("id-ID", { maximumFractionDigits: 0 })}`,
         title: "Transaction Receipt",
       });
     } catch (error) {
@@ -145,11 +145,17 @@ const TransactionDetail = ({
                     {product.name}
                   </Text>
                   <Text className="text-gray-500 text-sm">
-                    {product.quantity} × ${product.price.toFixed(2)}
+                    {product.quantity} × Rp{" "}
+                    {product.price.toLocaleString("id-ID", {
+                      maximumFractionDigits: 0,
+                    })}
                   </Text>
                 </View>
                 <Text className="font-bold text-gray-800">
-                  ${(product.price * product.quantity).toFixed(2)}
+                  Rp{" "}
+                  {(product.price * product.quantity).toLocaleString("id-ID", {
+                    maximumFractionDigits: 0,
+                  })}
                 </Text>
               </View>
 
@@ -162,7 +168,10 @@ const TransactionDetail = ({
                     </Text>
                   </View>
                   <Text className="text-gray-600 mt-1">
-                    Unit Price: ${product.price.toFixed(2)}
+                    Unit Price: Rp{" "}
+                    {product.price.toLocaleString("id-ID", {
+                      maximumFractionDigits: 0,
+                    })}
                   </Text>
                 </View>
               )}
@@ -176,18 +185,23 @@ const TransactionDetail = ({
 
           <View className="flex-row justify-between mb-2">
             <Text className="text-gray-600">Subtotal</Text>
-            <Text className="text-gray-800">${subtotal.toFixed(2)}</Text>
+            <Text className="text-gray-800">
+              Rp{" "}
+              {subtotal.toLocaleString("id-ID", { maximumFractionDigits: 0 })}
+            </Text>
           </View>
 
           <View className="flex-row justify-between mb-2">
             <Text className="text-gray-600">Tax</Text>
-            <Text className="text-gray-800">${tax.toFixed(2)}</Text>
+            <Text className="text-gray-800">
+              Rp {tax.toLocaleString("id-ID", { maximumFractionDigits: 0 })}
+            </Text>
           </View>
 
           <View className="flex-row justify-between mt-2 pt-2 border-t border-gray-200">
             <Text className="text-gray-800 font-bold">Total</Text>
             <Text className="text-blue-600 font-bold text-lg">
-              ${total.toFixed(2)}
+              Rp {total.toLocaleString("id-ID", { maximumFractionDigits: 0 })}
             </Text>
           </View>
         </View>

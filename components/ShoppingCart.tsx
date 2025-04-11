@@ -85,21 +85,18 @@ const ShoppingCart = ({
   };
 
   const handleRemoveItem = (id: string) => {
-    Alert.alert(
-      "Remove Item",
-      "Are you sure you want to remove this item from your cart?",
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Remove",
-          onPress: () => {
-            onRemoveItem(id);
-            setCartItems(cartItems.filter((item) => item.id !== id));
-          },
-          style: "destructive",
-        },
-      ],
-    );
+    // Remove item immediately without confirmation for better user experience
+    console.log(`Removing item with id: ${id}`);
+
+    // Call the onRemoveItem callback first
+    onRemoveItem(id);
+
+    // Then update local state
+    const updatedItems = cartItems.filter((item) => item.id !== id);
+    setCartItems(updatedItems);
+
+    // Save to storage
+    storeData(STORAGE_KEYS.CART_ITEMS, updatedItems);
   };
 
   const calculateSubtotal = () => {
@@ -129,23 +126,25 @@ const ShoppingCart = ({
         </View>
       ) : (
         <>
-          <ScrollView className="max-h-40 mb-4">
+          <ScrollView className="max-h-[30vh] mb-4">
             {cartItems.map((item) => (
               <View
                 key={item.id}
-                className="flex-row items-center py-2 border-b border-gray-200"
+                className="flex-row items-center py-3 border-b border-gray-200"
               >
-                <View className="flex-1">
-                  <Text className="font-medium text-gray-800">{item.name}</Text>
+                <View className="flex-1 pr-2">
+                  <Text className="font-medium text-gray-800" numberOfLines={1}>
+                    {item.name}
+                  </Text>
                   <Text className="text-xs text-gray-500">SKU: {item.sku}</Text>
                 </View>
 
-                <View className="flex-row items-center mr-4">
+                <View className="flex-row items-center mr-2">
                   <TouchableOpacity
                     onPress={() => handleUpdateQuantity(item.id, -1)}
-                    className="p-1 bg-gray-100 rounded-full"
+                    className="p-2 bg-gray-100 rounded-full"
                   >
-                    <Minus size={16} color="#4B5563" />
+                    <Minus size={14} color="#4B5563" />
                   </TouchableOpacity>
 
                   <Text className="mx-2 min-w-8 text-center">
@@ -154,21 +153,24 @@ const ShoppingCart = ({
 
                   <TouchableOpacity
                     onPress={() => handleUpdateQuantity(item.id, 1)}
-                    className="p-1 bg-gray-100 rounded-full"
+                    className="p-2 bg-gray-100 rounded-full"
                   >
-                    <Plus size={16} color="#4B5563" />
+                    <Plus size={14} color="#4B5563" />
                   </TouchableOpacity>
                 </View>
 
-                <Text className="w-20 text-right font-medium">
-                  ${(item.price * item.quantity).toFixed(2)}
+                <Text className="w-16 text-right font-medium">
+                  Rp{" "}
+                  {(item.price * item.quantity).toLocaleString("id-ID", {
+                    maximumFractionDigits: 0,
+                  })}
                 </Text>
 
                 <TouchableOpacity
                   onPress={() => handleRemoveItem(item.id)}
-                  className="ml-2 p-1"
+                  className="ml-2 p-2"
                 >
-                  <Trash2 size={18} color="#EF4444" />
+                  <Trash2 size={16} color="#EF4444" />
                 </TouchableOpacity>
               </View>
             ))}
@@ -177,25 +179,32 @@ const ShoppingCart = ({
           <View className="border-t border-gray-200 pt-2">
             <View className="flex-row justify-between py-1">
               <Text className="text-gray-600">Subtotal</Text>
-              <Text className="font-medium">${subtotal.toFixed(2)}</Text>
+              <Text className="font-medium">
+                Rp{" "}
+                {subtotal.toLocaleString("id-ID", { maximumFractionDigits: 0 })}
+              </Text>
             </View>
             <View className="flex-row justify-between py-1">
               <Text className="text-gray-600">Tax (8%)</Text>
-              <Text className="font-medium">${tax.toFixed(2)}</Text>
+              <Text className="font-medium">
+                Rp {tax.toLocaleString("id-ID", { maximumFractionDigits: 0 })}
+              </Text>
             </View>
             <View className="flex-row justify-between py-2 border-t border-gray-200 mt-1">
               <Text className="font-bold text-gray-800">Total</Text>
               <Text className="font-bold text-gray-800">
-                ${total.toFixed(2)}
+                Rp {total.toLocaleString("id-ID", { maximumFractionDigits: 0 })}
               </Text>
             </View>
           </View>
 
           <TouchableOpacity
             onPress={onCheckout}
-            className="mt-4 bg-blue-600 py-3 rounded-lg items-center"
+            className="mt-4 bg-blue-600 py-3 rounded-lg items-center sticky bottom-0"
           >
-            <Text className="text-white font-bold">Proceed to Checkout</Text>
+            <Text className="text-white font-bold text-lg">
+              Proceed to Checkout
+            </Text>
           </TouchableOpacity>
         </>
       )}

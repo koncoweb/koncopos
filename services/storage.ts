@@ -6,6 +6,7 @@ export const STORAGE_KEYS = {
   CART_ITEMS: "cart_items",
   TRANSACTIONS: "transactions",
   TRANSFERS: "transfers",
+  CATEGORIES: "categories",
 };
 
 // Generic storage functions

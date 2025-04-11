@@ -110,9 +110,12 @@ const ProductList = ({
   };
 
   const renderStockIndicator = (stock: number) => {
-    if (stock <= 10) {
+    // Ensure stock is a valid number
+    const validStock = isNaN(Number(stock)) ? 0 : Number(stock);
+
+    if (validStock <= 10) {
       return <View className="w-3 h-3 rounded-full bg-red-500" />;
-    } else if (stock <= 30) {
+    } else if (validStock <= 30) {
       return <View className="w-3 h-3 rounded-full bg-yellow-500" />;
     } else {
       return <View className="w-3 h-3 rounded-full bg-green-500" />;
@@ -204,12 +207,15 @@ const ProductList = ({
             </View>
             <View className="items-end">
               <Text className="text-lg font-semibold">
-                ${item.price.toFixed(2)}
+                Rp{" "}
+                {item.price.toLocaleString("id-ID", {
+                  maximumFractionDigits: 0,
+                })}
               </Text>
               <View className="flex-row items-center mt-1">
                 {renderStockIndicator(item.stock)}
                 <Text className="ml-2 text-sm text-gray-600">
-                  {item.stock} in stock
+                  {isNaN(Number(item.stock)) ? 0 : Number(item.stock)} in stock
                 </Text>
               </View>
             </View>

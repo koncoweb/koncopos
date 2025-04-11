@@ -114,12 +114,10 @@ export default function MainDashboard() {
     setActiveScreen("dashboard");
   };
 
-  // Handle data migration first
-  if (!dataMigrationComplete) {
-    return (
-      <DataMigrationService onComplete={() => setDataMigrationComplete(true)} />
-    );
-  }
+  // Skip data migration to preserve existing data
+  useEffect(() => {
+    setDataMigrationComplete(true);
+  }, []);
 
   if (isLoading) {
     return (

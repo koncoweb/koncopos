@@ -37,9 +37,19 @@ const DataMigrationService: React.FC<DataMigrationServiceProps> = ({
       try {
         setIsLoading(true);
 
-        // Force re-migration by clearing previous data
-        await clearAllData();
-        console.log("Cleared all previous data");
+        // Check if migration has already been performed
+        const migrationCompleted = await getData<boolean>(
+          "migration_completed",
+          false,
+        );
+
+        if (migrationCompleted) {
+          console.log("Migration already completed");
+          onComplete();
+          return;
+        }
+
+        // Only initialize data if it doesn't exist yet
 
         // Migrate products
         await storeData(STORAGE_KEYS.PRODUCTS, initialProducts);

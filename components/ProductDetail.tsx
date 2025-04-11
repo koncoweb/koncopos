@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -8,6 +8,8 @@ import {
   Alert,
 } from "react-native";
 import { ArrowLeft, Save, Trash2, Plus, Minus } from "lucide-react-native";
+import CategoryManager from "./CategoryManager";
+import { getData, STORAGE_KEYS } from "../services/storage";
 
 interface ProductDetailProps {
   product?: {
@@ -48,27 +50,88 @@ const ProductDetail = ({
 }: ProductDetailProps) => {
   const [editedProduct, setEditedProduct] = useState(product);
   const [stockAdjustment, setStockAdjustment] = useState(0);
+  const [manualStockInput, setManualStockInput] = useState(
+    String(product.currentStock),
+  );
+  const [categoryManagerVisible, setCategoryManagerVisible] = useState(false);
+
+  // Update manual stock input when product changes
+  useEffect(() => {
+    // Ensure we're working with valid numbers
+    const currentStock = isNaN(Number(product.currentStock))
+      ? 0
+      : Number(product.currentStock);
+
+    console.log(
+      `ProductDetail: Loading product ${product.id} with stock ${currentStock}`,
+    );
+
+    setManualStockInput(String(currentStock));
+    setEditedProduct(product); // Set the entire product object to ensure all fields are updated
+    setStockAdjustment(0);
+  }, [product]); // Depend on the entire product object to ensure all changes are captured
 
   const handleInputChange = (field: string, value: string | number) => {
-    setEditedProduct({
-      ...editedProduct,
-      [field]: value,
-    });
+    // For numeric fields, ensure we have valid numbers
+    if (field === "currentStock" || field === "price" || field === "cost") {
+      // Convert to number and validate
+      const numericValue = isNaN(Number(value)) ? 0 : Number(value);
+
+      // Ensure we have a non-negative value for stock and prices
+      const validatedValue = Math.max(0, numericValue);
+
+      setEditedProduct({
+        ...editedProduct,
+        [field]: validatedValue,
+      });
+
+      // Update manual stock input when currentStock is changed
+      if (field === "currentStock") {
+        setManualStockInput(String(validatedValue));
+        setStockAdjustment(0); // Reset adjustment when directly setting stock
+      }
+    } else {
+      // For non-numeric fields
+      setEditedProduct({
+        ...editedProduct,
+        [field]: value,
+      });
+    }
   };
 
   const handleSave = () => {
-    // Apply stock adjustment if any
-    if (stockAdjustment !== 0) {
-      const updatedProduct = {
-        ...editedProduct,
-        currentStock: editedProduct.currentStock + stockAdjustment,
-      };
-      onSave(updatedProduct);
-      Alert.alert("Success", "Product updated successfully");
-    } else {
-      onSave(editedProduct);
-      Alert.alert("Success", "Product updated successfully");
-    }
+    // Ensure all numeric values are valid numbers
+    const currentStock = isNaN(Number(editedProduct.currentStock))
+      ? 0
+      : Number(editedProduct.currentStock);
+    const adjustment = isNaN(Number(stockAdjustment))
+      ? 0
+      : Number(stockAdjustment);
+    const price = isNaN(Number(editedProduct.price))
+      ? 0
+      : Number(editedProduct.price);
+    const cost = isNaN(Number(editedProduct.cost))
+      ? 0
+      : Number(editedProduct.cost);
+
+    // Calculate new stock level with adjustment
+    const newStockLevel =
+      adjustment !== 0 ? currentStock + adjustment : currentStock;
+
+    // Create a copy of the product with updated stock and validated numeric values
+    const updatedProduct = {
+      ...editedProduct,
+      currentStock: newStockLevel,
+      price: price,
+      cost: cost,
+    };
+
+    // Update the manual stock input to reflect the new stock level
+    setManualStockInput(String(newStockLevel));
+    setStockAdjustment(0); // Reset adjustment after save
+
+    onSave(updatedProduct);
+    Alert.alert("Success", "Product updated successfully");
   };
 
   const handleDelete = () => {
@@ -91,7 +154,23 @@ const ProductDetail = ({
   };
 
   const adjustStock = (amount: number) => {
-    setStockAdjustment(stockAdjustment + amount);
+    const currentAdjustment = isNaN(Number(stockAdjustment))
+      ? 0
+      : Number(stockAdjustment);
+
+    // Calculate new adjustment value
+    const newAdjustment = currentAdjustment + amount;
+
+    // Prevent negative stock by checking if current stock + new adjustment would be negative
+    const currentStock = isNaN(Number(editedProduct.currentStock))
+      ? 0
+      : Number(editedProduct.currentStock);
+    if (currentStock + newAdjustment < 0) {
+      // Limit adjustment to not go below zero stock
+      setStockAdjustment(-currentStock);
+    } else {
+      setStockAdjustment(newAdjustment);
+    }
   };
 
   return (
@@ -149,11 +228,13 @@ const ProductDetail = ({
           />
 
           <Text className="font-medium mb-1 text-gray-700">Category</Text>
-          <TextInput
-            className="bg-white border border-gray-300 rounded-md p-2 mb-3"
-            value={editedProduct.category}
-            onChangeText={(text) => handleInputChange("category", text)}
-          />
+          <TouchableOpacity
+            className="bg-white border border-gray-300 rounded-md p-2 mb-3 flex-row justify-between items-center"
+            onPress={() => setCategoryManagerVisible(true)}
+          >
+            <Text>{editedProduct.category || "Select category"}</Text>
+            <Text className="text-blue-500">Select</Text>
+          </TouchableOpacity>
         </View>
 
         {/* Pricing Information */}
@@ -161,7 +242,7 @@ const ProductDetail = ({
           <Text className="text-lg font-bold mb-4 text-blue-800">Pricing</Text>
 
           <Text className="font-medium mb-1 text-gray-700">
-            Selling Price ($)
+            Selling Price (Rp)
           </Text>
           <TextInput
             className="bg-white border border-gray-300 rounded-md p-2 mb-3"
@@ -172,7 +253,9 @@ const ProductDetail = ({
             keyboardType="numeric"
           />
 
-          <Text className="font-medium mb-1 text-gray-700">Cost Price ($)</Text>
+          <Text className="font-medium mb-1 text-gray-700">
+            Cost Price (Rp)
+          </Text>
           <TextInput
             className="bg-white border border-gray-300 rounded-md p-2 mb-3"
             value={String(editedProduct.cost || 0)}
@@ -190,9 +273,20 @@ const ProductDetail = ({
           </Text>
 
           <Text className="font-medium mb-1 text-gray-700">Current Stock</Text>
-          <View className="bg-white border border-gray-300 rounded-md p-2 mb-3">
-            <Text className="text-lg">{editedProduct.currentStock}</Text>
-          </View>
+          <TextInput
+            className="bg-white border border-gray-300 rounded-md p-2 mb-3"
+            value={manualStockInput}
+            onChangeText={(text) => {
+              // Only allow numeric input (including empty string for typing)
+              if (text === "" || /^\d+$/.test(text)) {
+                setManualStockInput(text);
+                // Convert to number, defaulting to 0 if empty or NaN
+                const newStock = text === "" ? 0 : parseInt(text) || 0;
+                handleInputChange("currentStock", newStock);
+              }
+            }}
+            keyboardType="numeric"
+          />
 
           <Text className="font-medium mb-1 text-gray-700">Location</Text>
           <TextInput
@@ -229,7 +323,10 @@ const ProductDetail = ({
 
             <Text className="text-sm text-gray-500 mt-2">
               New stock level after adjustment:{" "}
-              {editedProduct.currentStock + stockAdjustment}
+              {(isNaN(Number(editedProduct.currentStock))
+                ? 0
+                : Number(editedProduct.currentStock)) +
+                (isNaN(Number(stockAdjustment)) ? 0 : Number(stockAdjustment))}
             </Text>
           </View>
         </View>
@@ -251,6 +348,16 @@ const ProductDetail = ({
           </TouchableOpacity>
         </View>
       </ScrollView>
+
+      {/* Category Manager Modal */}
+      <CategoryManager
+        visible={categoryManagerVisible}
+        onClose={() => setCategoryManagerVisible(false)}
+        onCategorySelected={(category) => {
+          handleInputChange("category", category);
+          setCategoryManagerVisible(false);
+        }}
+      />
     </View>
   );
 };

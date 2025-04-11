@@ -110,7 +110,10 @@ const TransactionList = ({
           </View>
         </View>
         <View className="items-end">
-          <Text className="text-lg font-bold">${item.amount.toFixed(2)}</Text>
+          <Text className="text-lg font-bold">
+            Rp{" "}
+            {item.amount.toLocaleString("id-ID", { maximumFractionDigits: 0 })}
+          </Text>
           <View
             className={`rounded-full px-2 py-1 mt-1 ${getStatusColor(item.status)}`}
           >

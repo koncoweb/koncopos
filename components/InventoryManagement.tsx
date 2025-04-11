@@ -63,7 +63,13 @@ const InventoryManagement = ({
   }, [products, isLoading]);
 
   const handleProductSelect = (product: any) => {
-    setSelectedProduct(product);
+    // Find the full product data from the products array to ensure we have all fields
+    const fullProduct = products.find((p) => p.id === product.id);
+    if (fullProduct) {
+      setSelectedProduct(fullProduct);
+    } else {
+      setSelectedProduct(product);
+    }
     setIsDetailView(true);
   };
 
@@ -73,11 +79,37 @@ const InventoryManagement = ({
   };
 
   const handleSaveProduct = (updatedProduct: Product) => {
-    const updatedProducts = products.map((p) =>
-      p.id === updatedProduct.id ? updatedProduct : p,
-    );
-    setProducts(updatedProducts);
-    setSelectedProduct(updatedProduct);
+    // Ensure numeric values are valid numbers
+    const validatedProduct = {
+      ...updatedProduct,
+      price: isNaN(Number(updatedProduct.price))
+        ? 0
+        : Number(updatedProduct.price),
+      cost: isNaN(Number(updatedProduct.cost))
+        ? 0
+        : Number(updatedProduct.cost),
+      currentStock: isNaN(Number(updatedProduct.currentStock))
+        ? 0
+        : Number(updatedProduct.currentStock),
+    };
+
+    // Check if this is a new product (not in the products array yet)
+    const isNewProduct = !products.some((p) => p.id === validatedProduct.id);
+
+    if (isNewProduct) {
+      // Add the new product to the products array
+      const newProducts = [...products, validatedProduct];
+      setProducts(newProducts);
+      console.log("New product added:", validatedProduct.name);
+    } else {
+      // Update existing product
+      const updatedProducts = products.map((p) =>
+        p.id === validatedProduct.id ? validatedProduct : p,
+      );
+      setProducts(updatedProducts);
+    }
+
+    setSelectedProduct(validatedProduct);
   };
 
   const handleDeleteProduct = (productId: string) => {

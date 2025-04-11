@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -11,6 +11,7 @@ import {
 } from "react-native";
 import { useRouter } from "expo-router";
 import { Lock, User, Eye, EyeOff } from "lucide-react-native";
+import { getData, storeData } from "../services/storage";
 
 interface LoginScreenProps {
   onLogin?: (username: string, password: string) => void;
@@ -23,7 +24,34 @@ const LoginScreen = ({ onLogin = () => {} }: LoginScreenProps) => {
   const [error, setError] = useState("");
   const router = useRouter();
 
-  const handleLogin = () => {
+  // Create default admin account on component mount
+  useEffect(() => {
+    const createDefaultAdmin = async () => {
+      try {
+        // Check if admin account already exists
+        const accounts = await getData<Record<string, string>>(
+          "user_accounts",
+          {},
+        );
+
+        // If admin account doesn't exist, create it
+        if (!accounts["admin"]) {
+          const updatedAccounts = {
+            ...accounts,
+            admin: "password123",
+          };
+          await storeData("user_accounts", updatedAccounts);
+          console.log("Default admin account created");
+        }
+      } catch (error) {
+        console.error("Error creating default admin account:", error);
+      }
+    };
+
+    createDefaultAdmin();
+  }, []);
+
+  const handleLogin = async () => {
     if (!username || !password) {
       setError("Please enter both username and password");
       return;
@@ -32,11 +60,34 @@ const LoginScreen = ({ onLogin = () => {} }: LoginScreenProps) => {
     // Clear any previous errors
     setError("");
 
-    // Call the onLogin prop with credentials
-    onLogin(username, password);
+    try {
+      // Check if it's the demo account
+      if (username === "demo" && password === "password") {
+        // Call the onLogin prop with credentials
+        onLogin(username, password);
+        // Navigate to the main dashboard
+        router.replace("/");
+        return;
+      }
 
-    // For demo purposes, navigate to the main dashboard
-    router.replace("/");
+      // Check if it's the admin account
+      const accounts = await getData<Record<string, string>>(
+        "user_accounts",
+        {},
+      );
+
+      if (accounts[username] === password) {
+        // Call the onLogin prop with credentials
+        onLogin(username, password);
+        // Navigate to the main dashboard
+        router.replace("/");
+      } else {
+        setError("Invalid username or password");
+      }
+    } catch (error) {
+      console.error("Login error:", error);
+      setError("An error occurred during login");
+    }
   };
 
   return (
@@ -130,13 +181,13 @@ const LoginScreen = ({ onLogin = () => {} }: LoginScreenProps) => {
             {/* Demo Credentials */}
             <View className="mt-8 p-4 bg-gray-50 rounded-lg">
               <Text className="text-gray-500 text-center text-sm">
-                Demo Credentials
+                Available Accounts
               </Text>
               <Text className="text-gray-700 text-center mt-1">
-                Username: demo
+                Demo - Username: demo / Password: password
               </Text>
               <Text className="text-gray-700 text-center">
-                Password: password
+                Admin - Username: admin / Password: password123
               </Text>
             </View>
           </View>
