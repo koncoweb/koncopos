@@ -1,9 +1,25 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { View, Text, TouchableOpacity, SafeAreaView } from "react-native";
 import { Search, Plus, ArrowLeft } from "lucide-react-native";
 import ProductList from "./ProductList";
 import ProductDetail from "./ProductDetail";
-import { storeData, getData, STORAGE_KEYS } from "../services/storage";
+import { useInventoryData } from "../hooks/useInventoryData";
+
+export interface WarehouseStock {
+  warehouseId: string;
+  warehouseName: string;
+  quantity: number;
+}
+
+export interface ProductVariation {
+  id: string;
+  type: string; // e.g., 'size', 'flavor', 'color'
+  value: string; // e.g., '1kg', 'strawberry', 'red'
+  sku: string;
+  price: number;
+  cost: number;
+  warehouseStocks: WarehouseStock[];
+}
 
 export interface Product {
   id: string;
@@ -16,6 +32,9 @@ export interface Product {
   category: string;
   location: string;
   imageUrl: string;
+  warehouseStocks?: WarehouseStock[];
+  variations?: ProductVariation[];
+  hasVariations?: boolean;
 }
 
 interface InventoryManagementProps {
@@ -30,44 +49,23 @@ const InventoryManagement = ({
 }: InventoryManagementProps) => {
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [isDetailView, setIsDetailView] = useState(false);
-  const [products, setProducts] = useState<Product[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
 
-  // Load products from storage on component mount
-  useEffect(() => {
-    const loadProducts = async () => {
-      setIsLoading(true);
-      try {
-        const storedProducts = await getData<Product[]>(
-          STORAGE_KEYS.PRODUCTS,
-          initialProducts,
-        );
-        console.log(`Loaded ${storedProducts.length} products from storage`);
-        setProducts(storedProducts);
-      } catch (error) {
-        console.error("Error loading products:", error);
-        setProducts(initialProducts);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    loadProducts();
-  }, []);
-
-  // Save products to storage whenever they change
-  useEffect(() => {
-    if (!isLoading) {
-      storeData(STORAGE_KEYS.PRODUCTS, products);
-    }
-  }, [products, isLoading]);
+  // Use the custom hook to manage inventory data
+  const { products, isLoading, saveProduct, deleteProduct, createNewProduct } =
+    useInventoryData(initialProducts);
 
   const handleProductSelect = (product: any) => {
     // Find the full product data from the products array to ensure we have all fields
     const fullProduct = products.find((p) => p.id === product.id);
     if (fullProduct) {
+      console.log(
+        `InventoryManagement: Selected product ${fullProduct.id} with ${fullProduct.warehouseStocks?.length || 0} warehouse stocks`,
+      );
       setSelectedProduct(fullProduct);
     } else {
+      console.log(
+        `InventoryManagement: Selected product ${product.id} not found in products array, using partial data`,
+      );
       setSelectedProduct(product);
     }
     setIsDetailView(true);
@@ -79,60 +77,65 @@ const InventoryManagement = ({
   };
 
   const handleSaveProduct = (updatedProduct: Product) => {
-    // Ensure numeric values are valid numbers
-    const validatedProduct = {
-      ...updatedProduct,
-      price: isNaN(Number(updatedProduct.price))
-        ? 0
-        : Number(updatedProduct.price),
-      cost: isNaN(Number(updatedProduct.cost))
-        ? 0
-        : Number(updatedProduct.cost),
-      currentStock: isNaN(Number(updatedProduct.currentStock))
-        ? 0
-        : Number(updatedProduct.currentStock),
-    };
-
-    // Check if this is a new product (not in the products array yet)
-    const isNewProduct = !products.some((p) => p.id === validatedProduct.id);
-
-    if (isNewProduct) {
-      // Add the new product to the products array
-      const newProducts = [...products, validatedProduct];
-      setProducts(newProducts);
-      console.log("New product added:", validatedProduct.name);
-    } else {
-      // Update existing product
-      const updatedProducts = products.map((p) =>
-        p.id === validatedProduct.id ? validatedProduct : p,
+    // Ensure product has a valid ID before saving
+    if (!updatedProduct.id || updatedProduct.id === "undefined") {
+      updatedProduct.id = `${Date.now()}`;
+      console.log(
+        `Generated new product ID: ${updatedProduct.id} before saving`,
       );
-      setProducts(updatedProducts);
     }
 
-    setSelectedProduct(validatedProduct);
+    // Create a deep copy to prevent reference issues
+    const productToSave = JSON.parse(JSON.stringify(updatedProduct));
+
+    // Log the product being saved to verify warehouse stocks are included
+    console.log(
+      `InventoryManagement: Saving product with ID ${productToSave.id}:`,
+      JSON.stringify({
+        id: productToSave.id,
+        name: productToSave.name,
+        warehouseStocksCount: productToSave.warehouseStocks?.length || 0,
+        warehouseStocks: productToSave.warehouseStocks,
+      }),
+    );
+
+    // Ensure warehouseStocks is properly initialized if missing
+    if (!productToSave.warehouseStocks) {
+      console.log(
+        "InventoryManagement: warehouseStocks is missing, initializing empty array",
+      );
+      productToSave.warehouseStocks = [];
+    }
+
+    const savedProduct = saveProduct(productToSave);
+
+    // Update the selected product with the saved product to maintain state
+    setSelectedProduct(savedProduct);
   };
 
   const handleDeleteProduct = (productId: string) => {
-    const filteredProducts = products.filter((p) => p.id !== productId);
-    setProducts(filteredProducts);
+    deleteProduct(productId);
     setIsDetailView(false);
     setSelectedProduct(null);
   };
 
   const handleAddNewProduct = () => {
-    const newProduct = {
-      id: `${Date.now()}`,
-      name: "New Product",
-      sku: `SKU-${Date.now().toString().slice(-6)}`,
-      description: "Product description",
-      price: 0,
-      cost: 0,
-      currentStock: 0,
-      category: "Uncategorized",
-      location: "Warehouse A",
-      imageUrl: "",
-    };
-
+    const newProduct = createNewProduct();
+    // Ensure new product has warehouseStocks initialized
+    if (!newProduct.warehouseStocks) {
+      newProduct.warehouseStocks = [];
+      console.log(
+        "InventoryManagement: Initialized empty warehouseStocks for new product",
+      );
+    }
+    console.log(
+      `InventoryManagement: Created new product with ID ${newProduct.id}`,
+      JSON.stringify({
+        id: newProduct.id,
+        name: newProduct.name,
+        warehouseStocks: newProduct.warehouseStocks,
+      }),
+    );
     setSelectedProduct(newProduct);
     setIsDetailView(true);
   };

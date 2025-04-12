@@ -10,6 +10,8 @@ import { Product } from "./InventoryManagement";
 import { CartItem } from "./ShoppingCart";
 import { Transaction } from "./TransactionHistory";
 import { Transfer } from "./TransferManagement";
+import firebaseService from "../services/firebaseService";
+import { useFirebaseConfig } from "../contexts/FirebaseConfigContext";
 
 // Sample initial data for migration
 import initialProducts from "../data/initialProducts";
@@ -22,6 +24,7 @@ interface DataMigrationServiceProps {
 const DataMigrationService: React.FC<DataMigrationServiceProps> = ({
   onComplete,
 }) => {
+  const { isConfigured } = useFirebaseConfig();
   const [migrationStatus, setMigrationStatus] = useState<{
     products: boolean;
     cart: boolean;
@@ -49,23 +52,95 @@ const DataMigrationService: React.FC<DataMigrationServiceProps> = ({
           return;
         }
 
-        // Only initialize data if it doesn't exist yet
+        // Check if Firebase is configured and initialized
+        const useFirebase = isConfigured && firebaseService.isInitialized();
+        console.log(`Using Firebase for data migration: ${useFirebase}`);
 
         // Migrate products
-        await storeData(STORAGE_KEYS.PRODUCTS, initialProducts);
-        setMigrationStatus((prev) => ({ ...prev, products: true }));
+        if (useFirebase) {
+          // First check if products collection already exists in Firebase
+          try {
+            const existingProducts =
+              await firebaseService.getCollection("products");
+            if (existingProducts.length === 0) {
+              // Add initial products to Firebase
+              for (const product of initialProducts) {
+                await firebaseService.addDocument(
+                  "products",
+                  product,
+                  product.id,
+                );
+              }
+            }
+            setMigrationStatus((prev) => ({ ...prev, products: true }));
+          } catch (error) {
+            console.error("Firebase products migration error:", error);
+            // Fallback to local storage
+            await storeData(STORAGE_KEYS.PRODUCTS, initialProducts);
+            setMigrationStatus((prev) => ({ ...prev, products: true }));
+          }
+        } else {
+          // Use local storage
+          await storeData(STORAGE_KEYS.PRODUCTS, initialProducts);
+          setMigrationStatus((prev) => ({ ...prev, products: true }));
+        }
 
         // Migrate cart items (empty cart initially)
         await storeData(STORAGE_KEYS.CART_ITEMS, []);
         setMigrationStatus((prev) => ({ ...prev, cart: true }));
 
         // Migrate transactions
-        await storeData(STORAGE_KEYS.TRANSACTIONS, initialTransactions);
-        setMigrationStatus((prev) => ({ ...prev, transactions: true }));
+        if (useFirebase) {
+          try {
+            const existingTransactions =
+              await firebaseService.getCollection("transactions");
+            if (existingTransactions.length === 0) {
+              // Add initial transactions to Firebase
+              for (const transaction of initialTransactions) {
+                await firebaseService.addDocument(
+                  "transactions",
+                  transaction,
+                  transaction.id,
+                );
+              }
+            }
+            setMigrationStatus((prev) => ({ ...prev, transactions: true }));
+          } catch (error) {
+            console.error("Firebase transactions migration error:", error);
+            // Fallback to local storage
+            await storeData(STORAGE_KEYS.TRANSACTIONS, initialTransactions);
+            setMigrationStatus((prev) => ({ ...prev, transactions: true }));
+          }
+        } else {
+          // Use local storage
+          await storeData(STORAGE_KEYS.TRANSACTIONS, initialTransactions);
+          setMigrationStatus((prev) => ({ ...prev, transactions: true }));
+        }
 
         // Migrate transfers (empty initially)
-        await storeData(STORAGE_KEYS.TRANSFERS, []);
-        setMigrationStatus((prev) => ({ ...prev, transfers: true }));
+        if (useFirebase) {
+          try {
+            const existingTransfers =
+              await firebaseService.getCollection("transfers");
+            if (existingTransfers.length === 0) {
+              // Initialize empty transfers collection in Firebase
+              await firebaseService.addDocument("transfers", {
+                initialized: true,
+                data: [],
+              });
+            }
+            setMigrationStatus((prev) => ({ ...prev, transfers: true }));
+          } catch (error) {
+            console.error("Firebase transfers migration error:", error);
+            // Fallback to local storage
+            await storeData(STORAGE_KEYS.TRANSFERS, []);
+            setMigrationStatus((prev) => ({ ...prev, transfers: true }));
+          }
+        } else {
+          // Use local storage
+          await storeData(STORAGE_KEYS.TRANSFERS, []);
+          setMigrationStatus((prev) => ({ ...prev, transfers: true }));
+        }
 
         // Mark migration as completed
         await storeData("migration_completed", true);
@@ -83,7 +158,7 @@ const DataMigrationService: React.FC<DataMigrationServiceProps> = ({
     };
 
     migrateData();
-  }, [onComplete]);
+  }, [onComplete, isConfigured]);
 
   if (isLoading) {
     return (

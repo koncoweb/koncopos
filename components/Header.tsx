@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { View, Text, TouchableOpacity, Image } from "react-native";
 import { Menu, User, LogOut, Settings } from "lucide-react-native";
 import { useRouter } from "expo-router";
+import { useAuth } from "../contexts/AuthContext";
 
 interface HeaderProps {
   title?: string;
@@ -11,20 +12,32 @@ interface HeaderProps {
 
 const Header = ({
   title = "POS System",
-  userName = "John Doe",
-  userAvatar = "https://api.dicebear.com/7.x/avataaars/svg?seed=John",
+  userName,
+  userAvatar,
 }: HeaderProps) => {
   const [menuVisible, setMenuVisible] = useState(false);
   const router = useRouter();
+  const { user, logout, login } = useAuth();
+
+  // Use context user data if available, otherwise use props
+  const displayName = user?.displayName || userName || "User";
+  const avatarUrl =
+    user?.photoURL ||
+    userAvatar ||
+    `https://api.dicebear.com/7.x/avataaars/svg?seed=${displayName}`;
 
   const toggleMenu = () => {
     setMenuVisible(!menuVisible);
   };
 
-  const handleLogout = () => {
-    // In a real app, this would handle logout logic
-    setMenuVisible(false);
-    router.replace("/login");
+  const handleLogout = async () => {
+    try {
+      setMenuVisible(false);
+      await logout();
+      // Router navigation is handled in the logout function in AuthContext
+    } catch (error) {
+      console.error("Logout error:", error);
+    }
   };
 
   const handleSettings = () => {
@@ -33,7 +46,7 @@ const Header = ({
   };
 
   return (
-    <View className="bg-blue-600 w-full px-4 py-3 flex-row justify-between items-center shadow-md">
+    <View className="bg-blue-600 w-full px-4 py-3 flex-row justify-between items-center shadow-md z-50">
       {/* Logo and Title */}
       <View className="flex-row items-center">
         <Image
@@ -45,21 +58,30 @@ const Header = ({
         <Text className="text-white font-bold text-lg">{title}</Text>
       </View>
 
-      {/* User Profile */}
+      {/* User Profile or Login Button */}
       <View className="relative">
-        <TouchableOpacity
-          onPress={toggleMenu}
-          className="flex-row items-center"
-        >
-          <Text className="text-white mr-2">{userName}</Text>
-          <View className="w-8 h-8 rounded-full bg-white overflow-hidden">
-            <Image source={{ uri: userAvatar }} className="w-full h-full" />
-          </View>
-        </TouchableOpacity>
+        {user?.isAuthenticated ? (
+          <TouchableOpacity
+            onPress={toggleMenu}
+            className="flex-row items-center"
+          >
+            <Text className="text-white mr-2">{displayName}</Text>
+            <View className="w-8 h-8 rounded-full bg-white overflow-hidden">
+              <Image source={{ uri: avatarUrl }} className="w-full h-full" />
+            </View>
+          </TouchableOpacity>
+        ) : (
+          <TouchableOpacity
+            onPress={() => router.push("/login")}
+            className="bg-white px-3 py-1 rounded-md"
+          >
+            <Text className="text-blue-600 font-semibold">Login</Text>
+          </TouchableOpacity>
+        )}
 
         {/* Dropdown Menu */}
-        {menuVisible && (
-          <View className="absolute top-10 right-0 bg-white rounded-md shadow-lg w-48 z-10">
+        {menuVisible && user?.isAuthenticated && (
+          <View className="absolute top-10 right-0 bg-white rounded-md shadow-lg w-48 z-[9999]">
             <TouchableOpacity
               className="flex-row items-center px-4 py-3 border-b border-gray-200"
               onPress={() => {}}
