@@ -79,24 +79,44 @@ const ProductDetail = ({
   onDelete = () => {},
   onBack = () => {},
 }: ProductDetailProps) => {
-  const [editedProduct, setEditedProduct] = useState(product);
+  // Ensure product has valid data to prevent controlled/uncontrolled input warnings
+  const validProduct =
+    product && product.id
+      ? product
+      : {
+          id: "1",
+          name: "Sample Product",
+          sku: "SKU-12345",
+          description:
+            "This is a sample product description that provides details about the product features and benefits.",
+          price: 29.99,
+          cost: 15.5,
+          currentStock: 42,
+          category: "Electronics",
+          location: "Warehouse A",
+          imageUrl:
+            "https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=400&q=80",
+          warehouseStocks: [],
+        };
+  const [editedProduct, setEditedProduct] = useState(validProduct);
   const [stockAdjustment, setStockAdjustment] = useState(0);
   const [manualStockInput, setManualStockInput] = useState(
-    String(product.currentStock),
+    String(validProduct.currentStock),
   );
   const [categoryManagerVisible, setCategoryManagerVisible] = useState(false);
   const [warehouses, setWarehouses] = useState<any[]>([]);
   const [warehouseStocks, setWarehouseStocks] = useState<WarehouseStock[]>(
-    product.warehouseStocks || [],
+    validProduct.warehouseStocks || [],
   );
   const [hasVariations, setHasVariations] = useState<boolean>(
-    product.hasVariations || false,
+    validProduct.hasVariations || false,
   );
   const [variations, setVariations] = useState<ProductVariation[]>(
-    product.variations || [],
+    validProduct.variations || [],
   );
-  const [showVariationsSection, setShowVariationsSection] =
-    useState<boolean>(false);
+  const [showVariationsSection, setShowVariationsSection] = useState<boolean>(
+    validProduct.hasVariations || false,
+  );
   const [newVariationType, setNewVariationType] = useState<string>("");
   const [newVariationValue, setNewVariationValue] = useState<string>("");
   const [isLoadingWarehouses, setIsLoadingWarehouses] = useState(false);
@@ -104,6 +124,14 @@ const ProductDetail = ({
 
   // Update manual stock input when product changes
   useEffect(() => {
+    // Guard against undefined product data
+    if (!product || !product.id) {
+      console.log(
+        `[DEBUG] ProductDetail: Received undefined or invalid product data`,
+      );
+      return; // Don't update state with invalid data
+    }
+
     // Ensure we're working with valid numbers
     const currentStock = isNaN(Number(product.currentStock))
       ? 0

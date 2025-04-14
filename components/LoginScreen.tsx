@@ -9,6 +9,7 @@ import {
   Platform,
   ScrollView,
   Alert,
+  ActivityIndicator,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { Lock, User, Eye, EyeOff } from "lucide-react-native";
@@ -54,7 +55,10 @@ const LoginScreen = ({ onLogin = () => {} }: LoginScreenProps) => {
     createDefaultAdmin();
   }, []);
 
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
+
   const handleLogin = async () => {
+    console.log("LoginScreen: handleLogin called");
     if (!username || !password) {
       setError("Please enter both username and password");
       return;
@@ -62,14 +66,26 @@ const LoginScreen = ({ onLogin = () => {} }: LoginScreenProps) => {
 
     // Clear any previous errors
     setError("");
+    // Set loading state
+    setIsLoggingIn(true);
 
     try {
+      console.log("Login attempt started for user:", username);
+
       // Check if it's the demo account
       if (username === "demo" && password === "password") {
+        console.log("Demo account login successful");
+        // Store auth state first
+        await storeData("auth_state", {
+          isAuthenticated: true,
+          userName: "Demo User",
+        });
         // Call the onLogin prop with credentials
         await onLogin(username, password);
-        // Navigate to the main dashboard
-        router.replace("/");
+        // Let AuthContext handle navigation
+        console.log(
+          "Demo login complete - letting AuthContext handle navigation",
+        );
         return;
       }
 
@@ -80,11 +96,14 @@ const LoginScreen = ({ onLogin = () => {} }: LoginScreenProps) => {
       // Check if Firebase is configured and initialized
       if (firebaseService.isInitialized()) {
         try {
+          console.log("Firebase initialized, attempting login");
           // Try to sign in with Firebase
           // For email/password login, ensure the username is a valid email format
           const isEmail = username.includes("@");
 
           if (isEmail) {
+            console.log("Attempting email login with Firebase");
+            console.log("Attempting to sign in with:", username);
             // Use Firebase email/password authentication
             const userCredential = await firebaseService.signIn(
               username,
@@ -102,15 +121,15 @@ const LoginScreen = ({ onLogin = () => {} }: LoginScreenProps) => {
             });
 
             // Call the onLogin prop with credentials
+            console.log("Email login successful, calling onLogin");
             await onLogin(username, password);
-            // Force a small delay to ensure state updates
-            setTimeout(() => {
-              // Navigate to the main dashboard
-              router.replace("/");
-            }, 100);
+            console.log(
+              "Email login complete - letting AuthContext handle navigation",
+            );
             return;
           } else {
             try {
+              console.log("Attempting direct username login with Firebase");
               // First try with the username directly (for existing accounts)
               const directCredential = await firebaseService.signIn(
                 username,
@@ -126,10 +145,11 @@ const LoginScreen = ({ onLogin = () => {} }: LoginScreenProps) => {
                 photoURL: directUser.photoURL,
               });
 
+              console.log("Direct login successful, calling onLogin");
               await onLogin(username, password);
-              setTimeout(() => {
-                router.replace("/");
-              }, 100);
+              console.log(
+                "Direct login complete - letting AuthContext handle navigation",
+              );
               return;
             } catch (directLoginError) {
               console.log("Direct login failed, trying with email format");
@@ -148,10 +168,11 @@ const LoginScreen = ({ onLogin = () => {} }: LoginScreenProps) => {
                 photoURL: user.photoURL,
               });
 
+              console.log("Email format login successful, calling onLogin");
               await onLogin(username, password);
-              setTimeout(() => {
-                router.replace("/");
-              }, 100);
+              console.log(
+                "Email format login complete - letting AuthContext handle navigation",
+              );
               return;
             }
           }
@@ -176,12 +197,14 @@ const LoginScreen = ({ onLogin = () => {} }: LoginScreenProps) => {
 
       // Fall back to local authentication if Firebase is not available
       // Check if it's the admin account
+      console.log("Attempting local authentication");
       const accounts = await getData<Record<string, string>>(
         "user_accounts",
         {},
       );
 
       if (accounts[username] === password) {
+        console.log("Local authentication successful");
         // Store auth state for local authentication
         await storeData("auth_state", {
           isAuthenticated: true,
@@ -189,18 +212,21 @@ const LoginScreen = ({ onLogin = () => {} }: LoginScreenProps) => {
         });
 
         // Call the onLogin prop with credentials
+        console.log("Local auth successful, calling onLogin");
         await onLogin(username, password);
-        // Add a small delay to ensure state updates
-        setTimeout(() => {
-          // Navigate to the main dashboard
-          router.replace("/");
-        }, 100);
+        console.log(
+          "Local auth complete - letting AuthContext handle navigation",
+        );
       } else {
+        console.log("Local authentication failed");
         setError("Invalid username or password");
       }
     } catch (error) {
       console.error("Login error:", error);
       setError("An error occurred during login");
+    } finally {
+      // Set loading state back to false
+      setIsLoggingIn(false);
     }
   };
 
@@ -285,10 +311,20 @@ const LoginScreen = ({ onLogin = () => {} }: LoginScreenProps) => {
               <TouchableOpacity
                 className="bg-blue-600 rounded-lg py-3 items-center mt-2"
                 onPress={handleLogin}
+                disabled={isLoggingIn}
               >
-                <Text className="text-white font-semibold text-lg">
-                  Sign In
-                </Text>
+                {isLoggingIn ? (
+                  <View className="flex-row items-center">
+                    <ActivityIndicator size="small" color="white" />
+                    <Text className="text-white font-semibold text-lg ml-2">
+                      Signing In...
+                    </Text>
+                  </View>
+                ) : (
+                  <Text className="text-white font-semibold text-lg">
+                    Sign In
+                  </Text>
+                )}
               </TouchableOpacity>
             </View>
 

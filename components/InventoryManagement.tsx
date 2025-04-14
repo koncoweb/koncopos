@@ -1,5 +1,11 @@
 import React, { useState } from "react";
-import { View, Text, TouchableOpacity, SafeAreaView } from "react-native";
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  SafeAreaView,
+  useWindowDimensions,
+} from "react-native";
 import { Search, Plus, ArrowLeft } from "lucide-react-native";
 import ProductList from "./ProductList";
 import ProductDetail from "./ProductDetail";
@@ -49,6 +55,10 @@ const InventoryManagement = ({
 }: InventoryManagementProps) => {
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [isDetailView, setIsDetailView] = useState(false);
+  const { width } = useWindowDimensions();
+
+  // Determine if we're on a desktop-sized screen (greater than 768px)
+  const isDesktop = width > 768;
 
   // Use the custom hook to manage inventory data
   const { products, isLoading, saveProduct, deleteProduct, createNewProduct } =
@@ -110,7 +120,13 @@ const InventoryManagement = ({
     const savedProduct = saveProduct(productToSave);
 
     // Update the selected product with the saved product to maintain state
-    setSelectedProduct(savedProduct);
+    if (savedProduct && savedProduct.id) {
+      setSelectedProduct(savedProduct);
+    } else {
+      console.log(
+        "InventoryManagement: Warning - savedProduct is invalid, keeping current selection",
+      );
+    }
   };
 
   const handleDeleteProduct = (productId: string) => {
@@ -142,7 +158,7 @@ const InventoryManagement = ({
 
   return (
     <SafeAreaView className="flex-1 bg-white">
-      {!isDetailView ? (
+      {!isDetailView || (isDesktop && selectedProduct) ? (
         <>
           {/* Header */}
           <View className="bg-blue-500 p-4">
@@ -182,21 +198,42 @@ const InventoryManagement = ({
             </View>
           </View>
 
-          {/* Product List */}
-          <ProductList
-            products={products.map((p) => ({
-              id: p.id,
-              name: p.name,
-              sku: p.sku,
-              price: p.price,
-              stock: p.currentStock,
-              category: p.category,
-              location: p.location,
-            }))}
-            onProductSelect={handleProductSelect}
-            searchEnabled={true}
-            filterEnabled={true}
-          />
+          {/* Desktop and Mobile Layout */}
+          <View
+            className={
+              isDesktop && selectedProduct ? "flex-row flex-1" : "flex-1"
+            }
+          >
+            {/* Product List */}
+            <View className={isDesktop && selectedProduct ? "w-1/3" : "flex-1"}>
+              <ProductList
+                products={products.map((p) => ({
+                  id: p.id,
+                  name: p.name,
+                  sku: p.sku,
+                  price: p.price,
+                  stock: p.currentStock,
+                  category: p.category,
+                  location: p.location,
+                }))}
+                onProductSelect={handleProductSelect}
+                searchEnabled={true}
+                filterEnabled={true}
+              />
+            </View>
+
+            {/* Product Detail (only shown on desktop when a product is selected) */}
+            {isDesktop && selectedProduct && (
+              <View className="w-2/3 border-l border-gray-200">
+                <ProductDetail
+                  product={selectedProduct as any}
+                  onSave={handleSaveProduct}
+                  onDelete={handleDeleteProduct}
+                  onBack={handleBackToList}
+                />
+              </View>
+            )}
+          </View>
         </>
       ) : (
         <ProductDetail
