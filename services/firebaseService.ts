@@ -195,9 +195,35 @@ class FirebaseService {
     }
   }
 
-  public async signUp(email: string, password: string) {
+  public async signUp(email: string, password: string, displayName?: string) {
     if (!this.auth) throw new Error("Firebase Auth not initialized");
-    return await createUserWithEmailAndPassword(this.auth, email, password);
+    const userCredential = await createUserWithEmailAndPassword(
+      this.auth,
+      email,
+      password,
+    );
+
+    // Create user record in Firestore 'users' collection
+    if (this.db && userCredential.user) {
+      const userData = {
+        uid: userCredential.user.uid,
+        email: userCredential.user.email,
+        displayName: displayName || email.split("@")[0],
+        role: "user", // Default role
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+
+      try {
+        await setDoc(doc(this.db, "users", userCredential.user.uid), userData);
+        console.log("User record created in 'users' collection:", userData);
+      } catch (error) {
+        console.error("Error creating user record in Firestore:", error);
+        // Don't throw here as the user account was created successfully
+      }
+    }
+
+    return userCredential;
   }
 
   public async logOut() {

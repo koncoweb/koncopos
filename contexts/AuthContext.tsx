@@ -17,6 +17,11 @@ interface AuthContextType {
   user: AuthUser | null;
   isLoading: boolean;
   login: (email: string, password: string) => Promise<void>;
+  signup: (
+    email: string,
+    password: string,
+    displayName?: string,
+  ) => Promise<void>;
   logout: () => Promise<void>;
   updateUserProfile: (data: Partial<AuthUser>) => Promise<void>;
 }
@@ -25,6 +30,7 @@ const AuthContext = createContext<AuthContextType>({
   user: null,
   isLoading: true,
   login: async () => {},
+  signup: async () => {},
   logout: async () => {},
   updateUserProfile: async () => {},
 });
@@ -373,6 +379,78 @@ export const AuthProvider: React.FC<{
     }
   };
 
+  // Signup function
+  const signup = async (
+    email: string,
+    password: string,
+    displayName?: string,
+  ) => {
+    console.log("AuthContext: signup function called with email", email);
+    try {
+      setIsLoading(true);
+      console.log("AuthContext: Setting isLoading to true for signup");
+
+      // Check if Firebase is initialized
+      if (firebaseService.isInitialized()) {
+        console.log("AuthContext: Firebase initialized, attempting signup");
+
+        // Create user with Firebase
+        const userCredential = await firebaseService.signUp(
+          email,
+          password,
+          displayName,
+        );
+        const firebaseUser = userCredential.user;
+        console.log("AuthContext: Firebase signup successful", {
+          uid: firebaseUser.uid,
+          email: firebaseUser.email,
+        });
+
+        // Get user role from Firestore (should be 'user' by default)
+        console.log("AuthContext: Getting user role from Firestore");
+        const userRole = await firebaseService.getUserRole(firebaseUser.uid);
+        console.log("AuthContext: User role retrieved", { userRole });
+
+        const authUser = {
+          uid: firebaseUser.uid,
+          email: firebaseUser.email || undefined,
+          displayName:
+            displayName || firebaseUser.displayName || email.split("@")[0],
+          photoURL: firebaseUser.photoURL || undefined,
+          isAuthenticated: true,
+          role: userRole || "user",
+        };
+        console.log(
+          "AuthContext: Created auth user object from signup",
+          authUser,
+        );
+
+        console.log("AuthContext: Storing auth state in AsyncStorage");
+        await storeData("auth_state", {
+          isAuthenticated: true,
+          userName: authUser.displayName || "",
+          userId: authUser.uid,
+          email: authUser.email,
+          photoURL: authUser.photoURL,
+        });
+        console.log("AuthContext: Auth state stored successfully");
+
+        console.log("AuthContext: Setting user state after signup", authUser);
+        setUser(authUser);
+        console.log("AuthContext: User state set successfully after signup");
+      } else {
+        console.log("AuthContext: Firebase not initialized, cannot signup");
+        throw new Error("Firebase not initialized. Cannot create account.");
+      }
+    } catch (error) {
+      console.error("AuthContext: Signup error:", error);
+      throw error;
+    } finally {
+      console.log("AuthContext: Setting isLoading to false after signup");
+      setIsLoading(false);
+    }
+  };
+
   // Update user profile
   const updateUserProfile = async (data: Partial<AuthUser>) => {
     console.log("AuthContext: updateUserProfile called with data", data);
@@ -425,6 +503,7 @@ export const AuthProvider: React.FC<{
         user,
         isLoading,
         login,
+        signup,
         logout,
         updateUserProfile,
       }}

@@ -328,6 +328,17 @@ const LoginScreen = ({ onLogin = () => {} }: LoginScreenProps) => {
               </TouchableOpacity>
             </View>
 
+            {/* Sign Up Link */}
+            <View className="mt-6 items-center">
+              <Text className="text-gray-500">Don't have an account?</Text>
+              <TouchableOpacity
+                onPress={() => router.push("/register")}
+                className="mt-1"
+              >
+                <Text className="text-blue-600 font-semibold">Sign Up</Text>
+              </TouchableOpacity>
+            </View>
+
             {/* Demo Credentials */}
             <View className="mt-8 p-4 bg-gray-50 rounded-lg">
               <Text className="text-gray-500 text-center text-sm">
