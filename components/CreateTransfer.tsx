@@ -10,6 +10,8 @@ import {
 import { ChevronDown, Plus, Minus, Check, X, Truck } from "lucide-react-native";
 import firebaseService from "../services/firebaseService";
 import { useFirebaseConfig } from "../contexts/FirebaseConfigContext";
+import { useInventoryData } from "../hooks/useInventoryData";
+import LocationChooser from "./LocationChooser";
 
 interface Product {
   id: string;
@@ -20,6 +22,11 @@ interface Product {
   price?: number;
   category?: string;
   description?: string;
+  warehouseStocks?: {
+    warehouseId: string;
+    warehouseName: string;
+    quantity: number;
+  }[];
 }
 
 interface Location {
@@ -38,11 +45,12 @@ const CreateTransfer = ({
   onCancel = () => {},
 }: CreateTransferProps) => {
   const { isConfigured } = useFirebaseConfig();
+  const { updateStockForTransfer } = useInventoryData();
   const [sourceLocation, setSourceLocation] = useState<Location | null>(null);
   const [destinationLocation, setDestinationLocation] =
     useState<Location | null>(null);
-  const [showSourceDropdown, setShowSourceDropdown] = useState(false);
-  const [showDestinationDropdown, setShowDestinationDropdown] = useState(false);
+  const [showSourceChooser, setShowSourceChooser] = useState(false);
+  const [showDestinationChooser, setShowDestinationChooser] = useState(false);
   const [selectedProducts, setSelectedProducts] = useState<Product[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [transferNotes, setTransferNotes] = useState("");
@@ -54,8 +62,19 @@ const CreateTransfer = ({
   // Load locations and products from database
   useEffect(() => {
     loadLocations();
-    loadProducts();
   }, [isConfigured]);
+
+  // Load products when source location changes
+  useEffect(() => {
+    if (sourceLocation && isConfigured) {
+      // Add a small delay to prevent rapid successive calls
+      const timeoutId = setTimeout(() => {
+        loadProducts();
+      }, 100);
+
+      return () => clearTimeout(timeoutId);
+    }
+  }, [sourceLocation?.id, isConfigured]);
 
   const loadLocations = async () => {
     if (!isConfigured || !firebaseService.isInitialized()) {
@@ -100,7 +119,13 @@ const CreateTransfer = ({
   };
 
   const loadProducts = async () => {
-    if (!isConfigured || !firebaseService.isInitialized()) {
+    if (!isConfigured || !firebaseService.isInitialized() || !sourceLocation) {
+      setAvailableProducts([]);
+      return;
+    }
+
+    // Prevent multiple simultaneous calls
+    if (isLoadingProducts) {
       return;
     }
 
@@ -108,26 +133,66 @@ const CreateTransfer = ({
     try {
       const productsData = await firebaseService.getCollection("products");
 
-      // Transform products data to match our interface
-      const products: Product[] = productsData.map((product: any) => ({
-        id: product.id,
-        name: product.name || "Unnamed Product",
-        sku: product.sku || product.id,
-        currentStock: product.stock || product.quantity || 0,
-        selectedQuantity: 0,
-        price: product.price,
-        category: product.category,
-        description: product.description,
-      }));
+      // Transform products data and filter by source location availability
+      const products: Product[] = productsData
+        .map((product: any) => {
+          // Get warehouse stocks from the product document
+          const warehouseStocks = [];
+          let locationStock = 0;
+
+          // Check if product has embedded warehouseStocks
+          if (
+            product.warehouseStocks &&
+            typeof product.warehouseStocks === "object"
+          ) {
+            // Convert warehouseStocks object to array format
+            Object.entries(product.warehouseStocks).forEach(
+              ([warehouseId, quantity]: [string, any]) => {
+                const stockQuantity = Number(quantity) || 0;
+                warehouseStocks.push({
+                  warehouseId: warehouseId,
+                  warehouseName: warehouseId, // Will be updated with actual name if available
+                  quantity: stockQuantity,
+                });
+
+                // Check if this warehouse matches our source location
+                const sanitizedSourceId = sourceLocation.id
+                  .replace(/\s+/g, "_")
+                  .toLowerCase();
+                if (warehouseId === sanitizedSourceId) {
+                  locationStock = stockQuantity;
+                }
+              },
+            );
+          }
+
+          return {
+            id: product.id,
+            name: product.name || "Unnamed Product",
+            sku: product.sku || product.id,
+            currentStock: locationStock, // Use stock from selected location
+            selectedQuantity: 0,
+            price: product.price,
+            category: product.category,
+            description: product.description,
+            warehouseStocks: warehouseStocks,
+          };
+        })
+        .filter((product: Product) => product.currentStock > 0); // Only show products with stock at source location
 
       setAvailableProducts(products);
-      console.log(`Loaded ${products.length} products from database`);
+      console.log(
+        `Loaded ${products.length} products available at ${sourceLocation.name}`,
+      );
     } catch (error) {
       console.error("Error loading products:", error);
       // Fallback to empty array if there's an error
       setAvailableProducts([]);
     } finally {
-      setIsLoadingProducts(false);
+      // Add a small delay before allowing next call
+      setTimeout(() => {
+        setIsLoadingProducts(false);
+      }, 50);
     }
   };
 
@@ -166,16 +231,78 @@ const CreateTransfer = ({
     );
   };
 
-  const handleCreateTransfer = () => {
-    // In a real app, this would send the transfer data to an API
-    console.log("Creating transfer:", {
-      sourceLocation,
-      destinationLocation,
-      products: selectedProducts,
-      notes: transferNotes,
-    });
+  const handleCreateTransfer = async () => {
+    if (!isConfigured || !firebaseService.isInitialized()) {
+      console.error("Firebase not configured or initialized");
+      return;
+    }
 
-    onTransferCreated();
+    if (!sourceLocation || !destinationLocation) {
+      console.error("Source or destination location not selected");
+      return;
+    }
+
+    try {
+      // Prepare transfer data
+      const transferData = {
+        sourceLocationId: sourceLocation.id,
+        sourceLocationName: sourceLocation.name,
+        sourceLocationType: sourceLocation.type,
+        destinationLocationId: destinationLocation.id,
+        destinationLocationName: destinationLocation.name,
+        destinationLocationType: destinationLocation.type,
+        products: selectedProducts.map((product) => ({
+          id: product.id,
+          name: product.name,
+          sku: product.sku,
+          quantity: product.selectedQuantity,
+          price: product.price || 0,
+          category: product.category || "",
+        })),
+        notes: transferNotes,
+        status: "completed", // Mark as completed since we're updating stock immediately
+        createdAt: new Date().toISOString(),
+        createdBy: firebaseService.getCurrentUser()?.uid || "unknown",
+        totalItems: selectedProducts.reduce(
+          (sum, product) => sum + product.selectedQuantity,
+          0,
+        ),
+      };
+
+      console.log("Creating transfer:", transferData);
+
+      // Save transfer to database
+      const savedTransfer = await firebaseService.addDocument(
+        "transfers",
+        transferData,
+      );
+      console.log("Transfer saved successfully:", savedTransfer);
+
+      // Update stock levels for all products in the transfer
+      const transferProducts = selectedProducts.map((product) => ({
+        id: product.id,
+        quantity: product.selectedQuantity,
+      }));
+
+      console.log("Updating stock levels for transfer...");
+      const stockUpdateSuccess = await updateStockForTransfer(
+        transferProducts,
+        sourceLocation.id,
+        destinationLocation.id,
+      );
+
+      if (stockUpdateSuccess) {
+        console.log("Stock levels updated successfully");
+      } else {
+        console.error("Failed to update stock levels");
+        // You might want to show a warning to the user here
+      }
+
+      onTransferCreated();
+    } catch (error) {
+      console.error("Error creating transfer:", error);
+      // You might want to show an error message to the user here
+    }
   };
 
   const isFormValid = () => {
@@ -198,115 +325,51 @@ const CreateTransfer = ({
         {/* Source Location */}
         <View className="mb-6">
           <Text className="text-sm font-medium mb-1">Source Location</Text>
-          <View className="relative">
-            <TouchableOpacity
-              className="flex-row items-center justify-between p-3 border border-gray-300 rounded-md bg-white"
-              onPress={() => setShowSourceDropdown(!showSourceDropdown)}
-              disabled={isLoadingLocations}
-            >
-              {isLoadingLocations ? (
-                <View className="flex-row items-center">
-                  <ActivityIndicator size="small" color="#666" />
-                  <Text className="ml-2 text-gray-500">
-                    Loading locations...
-                  </Text>
-                </View>
-              ) : (
-                <Text>{sourceLocation?.name || "Select source location"}</Text>
-              )}
-              <ChevronDown size={20} color="#666" />
-            </TouchableOpacity>
-
-            {showSourceDropdown && !isLoadingLocations && (
-              <View
-                className="absolute top-14 left-0 right-0 bg-white border border-gray-300 rounded-md z-50 shadow-lg max-h-48"
-                style={{ backgroundColor: "#ffffff", elevation: 10 }}
-              >
-                <ScrollView nestedScrollEnabled>
-                  {locations.map((location) => (
-                    <TouchableOpacity
-                      key={location.id}
-                      className="p-3 border-b border-gray-200 bg-white"
-                      style={{ backgroundColor: "#ffffff" }}
-                      onPress={() => {
-                        setSourceLocation(location);
-                        setShowSourceDropdown(false);
-                      }}
-                    >
-                      <Text className="font-medium text-gray-900">
-                        {location.name}
-                      </Text>
-                      {location.type && (
-                        <Text className="text-xs text-gray-600 capitalize">
-                          {location.type}
-                        </Text>
-                      )}
-                    </TouchableOpacity>
-                  ))}
-                </ScrollView>
+          <TouchableOpacity
+            className="flex-row items-center justify-between p-3 border border-gray-300 rounded-md bg-white"
+            onPress={() => setShowSourceChooser(true)}
+            disabled={isLoadingLocations}
+          >
+            {isLoadingLocations ? (
+              <View className="flex-row items-center">
+                <ActivityIndicator size="small" color="#666" />
+                <Text className="ml-2 text-gray-500">Loading locations...</Text>
               </View>
+            ) : (
+              <Text
+                className={sourceLocation ? "text-gray-900" : "text-gray-500"}
+              >
+                {sourceLocation?.name || "Select source location"}
+              </Text>
             )}
-          </View>
+            <ChevronDown size={20} color="#666" />
+          </TouchableOpacity>
         </View>
 
         {/* Destination Location */}
         <View className="mb-6">
           <Text className="text-sm font-medium mb-1">Destination Location</Text>
-          <View className="relative">
-            <TouchableOpacity
-              className="flex-row items-center justify-between p-3 border border-gray-300 rounded-md bg-white"
-              onPress={() =>
-                setShowDestinationDropdown(!showDestinationDropdown)
-              }
-              disabled={isLoadingLocations}
-            >
-              {isLoadingLocations ? (
-                <View className="flex-row items-center">
-                  <ActivityIndicator size="small" color="#666" />
-                  <Text className="ml-2 text-gray-500">
-                    Loading locations...
-                  </Text>
-                </View>
-              ) : (
-                <Text>
-                  {destinationLocation?.name || "Select destination location"}
-                </Text>
-              )}
-              <ChevronDown size={20} color="#666" />
-            </TouchableOpacity>
-
-            {showDestinationDropdown && !isLoadingLocations && (
-              <View
-                className="absolute top-14 left-0 right-0 bg-white border border-gray-300 rounded-md z-50 shadow-lg max-h-48"
-                style={{ backgroundColor: "#ffffff", elevation: 10 }}
-              >
-                <ScrollView nestedScrollEnabled>
-                  {locations
-                    .filter((location) => location.id !== sourceLocation?.id)
-                    .map((location) => (
-                      <TouchableOpacity
-                        key={location.id}
-                        className="p-3 border-b border-gray-200 bg-white"
-                        style={{ backgroundColor: "#ffffff" }}
-                        onPress={() => {
-                          setDestinationLocation(location);
-                          setShowDestinationDropdown(false);
-                        }}
-                      >
-                        <Text className="font-medium text-gray-900">
-                          {location.name}
-                        </Text>
-                        {location.type && (
-                          <Text className="text-xs text-gray-600 capitalize">
-                            {location.type}
-                          </Text>
-                        )}
-                      </TouchableOpacity>
-                    ))}
-                </ScrollView>
+          <TouchableOpacity
+            className="flex-row items-center justify-between p-3 border border-gray-300 rounded-md bg-white"
+            onPress={() => setShowDestinationChooser(true)}
+            disabled={isLoadingLocations}
+          >
+            {isLoadingLocations ? (
+              <View className="flex-row items-center">
+                <ActivityIndicator size="small" color="#666" />
+                <Text className="ml-2 text-gray-500">Loading locations...</Text>
               </View>
+            ) : (
+              <Text
+                className={
+                  destinationLocation ? "text-gray-900" : "text-gray-500"
+                }
+              >
+                {destinationLocation?.name || "Select destination location"}
+              </Text>
             )}
-          </View>
+            <ChevronDown size={20} color="#666" />
+          </TouchableOpacity>
         </View>
 
         {/* Selected Products */}
@@ -401,7 +464,9 @@ const CreateTransfer = ({
                 <View className="p-4 bg-gray-50">
                   <Text className="text-gray-500 text-center">
                     {availableProducts.length === 0
-                      ? "No products available in database"
+                      ? sourceLocation
+                        ? `No products available at ${sourceLocation.name}`
+                        : "Select a source location to view available products"
                       : "No products found"}
                   </Text>
                 </View>
@@ -419,7 +484,8 @@ const CreateTransfer = ({
                         SKU: {product.sku}
                       </Text>
                       <Text className="text-gray-500 text-sm">
-                        Available: {product.currentStock}
+                        Available at {sourceLocation?.name}:{" "}
+                        {product.currentStock}
                       </Text>
                       {product.category && (
                         <Text className="text-gray-400 text-xs">
@@ -480,6 +546,30 @@ const CreateTransfer = ({
           </TouchableOpacity>
         </View>
       </View>
+
+      {/* Location Chooser Modals */}
+      <LocationChooser
+        visible={showSourceChooser}
+        onClose={() => setShowSourceChooser(false)}
+        onLocationSelected={(location) => {
+          setSourceLocation(location);
+          // Clear destination if it's the same as source
+          if (destinationLocation?.id === location.id) {
+            setDestinationLocation(null);
+          }
+        }}
+        locations={locations}
+        title="Select Source Location"
+      />
+
+      <LocationChooser
+        visible={showDestinationChooser}
+        onClose={() => setShowDestinationChooser(false)}
+        onLocationSelected={setDestinationLocation}
+        locations={locations}
+        title="Select Destination Location"
+        excludeLocationId={sourceLocation?.id}
+      />
     </View>
   );
 };

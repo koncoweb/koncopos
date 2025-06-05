@@ -978,6 +978,145 @@ export const useInventoryData = (initialProducts: Product[] = []) => {
     }
   };
 
+  /**
+   * Updates stock levels for products involved in a transfer
+   * @param transferProducts Array of products with quantities to transfer
+   * @param sourceLocationId ID of the source location
+   * @param destinationLocationId ID of the destination location
+   * @returns Promise<boolean> True if all updates were successful
+   */
+  const updateStockForTransfer = async (
+    transferProducts: Array<{
+      id: string;
+      quantity: number;
+    }>,
+    sourceLocationId: string,
+    destinationLocationId: string,
+  ): Promise<boolean> => {
+    try {
+      if (!isConfigured || !firebaseService.isInitialized()) {
+        console.error("Firebase not configured for stock transfer update");
+        return false;
+      }
+
+      console.log(
+        `[STOCK TRANSFER] Updating stock for ${transferProducts.length} products`,
+      );
+      console.log(
+        `[STOCK TRANSFER] Source: ${sourceLocationId}, Destination: ${destinationLocationId}`,
+      );
+
+      // Sanitize location IDs
+      const sanitizedSourceId = sourceLocationId
+        .replace(/\s+/g, "_")
+        .toLowerCase();
+      const sanitizedDestinationId = destinationLocationId
+        .replace(/\s+/g, "_")
+        .toLowerCase();
+
+      // Update each product's stock levels
+      for (const transferProduct of transferProducts) {
+        try {
+          console.log(
+            `[STOCK TRANSFER] Processing product ${transferProduct.id} - quantity: ${transferProduct.quantity}`,
+          );
+
+          // Get the current product document from Firebase
+          const productDoc = await firebaseService.getDocument(
+            "products",
+            transferProduct.id,
+          );
+
+          if (!productDoc) {
+            console.error(
+              `[STOCK TRANSFER] Product ${transferProduct.id} not found in Firebase`,
+            );
+            continue;
+          }
+
+          // Get current warehouse stocks
+          const currentWarehouseStocks = productDoc.warehouseStocks || {};
+          console.log(
+            `[STOCK TRANSFER] Current warehouse stocks for ${transferProduct.id}:`,
+            currentWarehouseStocks,
+          );
+
+          // Update source location stock (subtract)
+          const currentSourceStock =
+            Number(currentWarehouseStocks[sanitizedSourceId]) || 0;
+          const newSourceStock = Math.max(
+            0,
+            currentSourceStock - transferProduct.quantity,
+          );
+          currentWarehouseStocks[sanitizedSourceId] = newSourceStock;
+
+          console.log(
+            `[STOCK TRANSFER] Source ${sanitizedSourceId}: ${currentSourceStock} -> ${newSourceStock}`,
+          );
+
+          // Update destination location stock (add)
+          const currentDestinationStock =
+            Number(currentWarehouseStocks[sanitizedDestinationId]) || 0;
+          const newDestinationStock =
+            currentDestinationStock + transferProduct.quantity;
+          currentWarehouseStocks[sanitizedDestinationId] = newDestinationStock;
+
+          console.log(
+            `[STOCK TRANSFER] Destination ${sanitizedDestinationId}: ${currentDestinationStock} -> ${newDestinationStock}`,
+          );
+
+          // Calculate new total stock
+          const newTotalStock = Object.values(currentWarehouseStocks).reduce(
+            (sum: number, stock: any) => sum + (Number(stock) || 0),
+            0,
+          );
+
+          console.log(
+            `[STOCK TRANSFER] New total stock for ${transferProduct.id}: ${newTotalStock}`,
+          );
+
+          // Update the product document in Firebase
+          const updateData = {
+            warehouseStocks: currentWarehouseStocks,
+            totalStock: newTotalStock,
+            updatedAt: new Date().toISOString(),
+            lastModifiedBy: firebaseService.getCurrentUser()?.uid || "system",
+          };
+
+          await firebaseService.updateDocument(
+            "products",
+            transferProduct.id,
+            updateData,
+          );
+
+          console.log(
+            `[STOCK TRANSFER] Successfully updated stock for product ${transferProduct.id}`,
+          );
+        } catch (productError) {
+          console.error(
+            `[STOCK TRANSFER] Error updating stock for product ${transferProduct.id}:`,
+            productError,
+          );
+          // Continue with other products even if one fails
+        }
+      }
+
+      // Refresh the local products state to reflect the changes
+      await refreshProducts();
+      console.log(
+        `[STOCK TRANSFER] Stock transfer completed and local state refreshed`,
+      );
+
+      return true;
+    } catch (error) {
+      console.error(
+        "[STOCK TRANSFER] Error updating stock for transfer:",
+        error,
+      );
+      return false;
+    }
+  };
+
   return {
     products,
     warehouses,
@@ -988,6 +1127,7 @@ export const useInventoryData = (initialProducts: Product[] = []) => {
     createNewProduct,
     validateAllProducts,
     refreshProducts,
+    updateStockForTransfer,
     isFirebaseConfigured: isConfigured,
     // Expose Firebase operations for potential direct use
     loadProductsFromFirebase,
