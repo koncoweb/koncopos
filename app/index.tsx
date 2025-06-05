@@ -1,5 +1,11 @@
 import React, { useState, useEffect } from "react";
-import { View, Text, SafeAreaView, ActivityIndicator } from "react-native";
+import {
+  View,
+  Text,
+  SafeAreaView,
+  ActivityIndicator,
+  ScrollView,
+} from "react-native";
 import { useRouter } from "expo-router";
 import { TempoDevtools } from "tempo-devtools";
 
@@ -11,6 +17,7 @@ import TransactionHistory from "../components/TransactionHistory";
 import TransferManagement from "../components/TransferManagement";
 import LoginScreen from "../components/LoginScreen";
 import DataMigrationService from "../components/DataMigrationService";
+import RoleDebugger from "../components/RoleDebugger";
 import { useAuth } from "../contexts/AuthContext";
 
 export default function MainDashboard() {
@@ -40,6 +47,15 @@ export default function MainDashboard() {
         break;
       case "transfers":
         router.push("/transfers");
+        break;
+      case "warehouses":
+        router.push("/warehouses");
+        break;
+      case "stores":
+        router.push("/stores");
+        break;
+      case "user-management":
+        router.push("/user-management");
         break;
       default:
         setActiveScreen(screen);
@@ -74,44 +90,70 @@ export default function MainDashboard() {
       <Header title="POS & Inventory System" />
 
       {/* Main Content Area */}
-      <View className="z-10 flex-1">
+      <ScrollView className="z-10 flex-1">
         {activeScreen === "dashboard" && (
-          <DashboardMenu
-            userName={user?.displayName || "User"}
-            menuItems={[
-              {
-                title: "Inventory",
-                icon: "Clipboard",
-                description:
-                  "Manage products, view stock levels, and adjust inventory",
-                onPress: () => navigateTo("inventory"),
-                color: "#4F46E5",
-              },
-              {
-                title: "POS",
-                icon: "BarChart3",
-                description:
-                  "Process sales transactions and manage shopping cart",
-                onPress: () => navigateTo("pos"),
-                color: "#10B981",
-              },
-              {
-                title: "Transactions",
-                icon: "History",
-                description: "View sales history and transaction details",
-                onPress: () => navigateTo("transactions"),
-                color: "#F59E0B",
-              },
-              {
-                title: "Transfers",
-                icon: "ArrowLeftRight",
-                description:
-                  "Create and receive inventory transfers between locations",
-                onPress: () => navigateTo("transfers"),
-                color: "#EC4899",
-              },
-            ]}
-          />
+          <>
+            <DashboardMenu
+              userName={user?.displayName || "User"}
+              menuItems={[
+                {
+                  title: "Inventory",
+                  icon: "Clipboard",
+                  description:
+                    "Manage products, view stock levels, and adjust inventory",
+                  onPress: () => navigateTo("inventory"),
+                  color: "#4F46E5",
+                },
+                {
+                  title: "POS",
+                  icon: "BarChart3",
+                  description:
+                    "Process sales transactions and manage shopping cart",
+                  onPress: () => navigateTo("pos"),
+                  color: "#10B981",
+                },
+                {
+                  title: "Transactions",
+                  icon: "History",
+                  description: "View sales history and transaction details",
+                  onPress: () => navigateTo("transactions"),
+                  color: "#F59E0B",
+                },
+                {
+                  title: "Transfers",
+                  icon: "ArrowLeftRight",
+                  description:
+                    "Create and receive inventory transfers between locations",
+                  onPress: () => navigateTo("transfers"),
+                  color: "#EC4899",
+                },
+                {
+                  title: "Warehouses",
+                  icon: "Warehouse",
+                  description:
+                    "Manage warehouse locations and user assignments",
+                  onPress: () => navigateTo("warehouses"),
+                  color: "#8B5CF6",
+                },
+                {
+                  title: "Stores",
+                  icon: "Store",
+                  description: "Manage store settings and configurations",
+                  onPress: () => navigateTo("stores"),
+                  color: "#06B6D4",
+                },
+                {
+                  title: "User Management",
+                  icon: "Users",
+                  description: "Manage users, roles, and permissions",
+                  onPress: () => navigateTo("user-management"),
+                  color: "#EF4444",
+                },
+              ]}
+            />
+            {/* Debug component - remove this in production */}
+            <RoleDebugger />
+          </>
         )}
 
         {activeScreen === "inventory" && (
@@ -129,7 +171,7 @@ export default function MainDashboard() {
         {activeScreen === "transfers" && (
           <TransferManagement onClose={handleBackToDashboard} />
         )}
-      </View>
+      </ScrollView>
     </SafeAreaView>
   );
 }

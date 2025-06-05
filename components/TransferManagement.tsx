@@ -3,6 +3,7 @@ import { View, Text, TouchableOpacity } from "react-native";
 import { Truck, Package } from "lucide-react-native";
 import CreateTransfer from "./CreateTransfer";
 import ReceiveTransfer from "./ReceiveTransfer";
+import Header from "./Header";
 import { storeData, getData, STORAGE_KEYS } from "../services/storage";
 
 export interface Transfer {
@@ -87,9 +88,11 @@ const TransferManagement = ({
   return (
     <View className="flex-1 bg-gray-50">
       {/* Header */}
+      <Header title="Transfer Management" />
+
+      {/* Page Description */}
       <View className="bg-white p-4 border-b border-gray-200">
-        <Text className="text-2xl font-bold">Transfer Management</Text>
-        <Text className="text-gray-500 mt-1">
+        <Text className="text-gray-500">
           Create and receive inventory transfers between locations
         </Text>
       </View>

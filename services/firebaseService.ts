@@ -240,10 +240,19 @@ class FirebaseService {
   public async getUserRole(uid: string): Promise<string | null> {
     if (!this.db) throw new Error("Firebase Firestore not initialized");
     try {
-      const userDoc = await getDoc(doc(this.db, "profiles", uid));
+      console.log(`Getting user role for UID: ${uid}`);
+
+      // Check the 'users' collection for the role
+      const userDoc = await getDoc(doc(this.db, "users", uid));
       if (userDoc.exists()) {
-        return userDoc.data().role || null;
+        const userData = userDoc.data();
+        const role = userData.role || null;
+        console.log(`Found user document in 'users' collection:`, userData);
+        console.log(`Extracted role: ${role}`);
+        return role;
       }
+
+      console.log(`No user document found for UID: ${uid}`);
       return null;
     } catch (error) {
       console.error("Error getting user role:", error);
@@ -267,6 +276,26 @@ class FirebaseService {
       return warehouses;
     } catch (error) {
       console.error("Error fetching warehouses:", error);
+      return [];
+    }
+  }
+
+  // Get all stores from Firestore
+  public async getStores() {
+    if (!this.db) throw new Error("Firebase Firestore not initialized");
+    try {
+      console.log("Fetching stores from Firestore...");
+      const storesCollection = collection(this.db, "stores");
+      const storesSnapshot = await getDocs(storesCollection);
+      const stores = storesSnapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+        name: doc.data().name || doc.id,
+      }));
+      console.log(`Retrieved ${stores.length} stores from Firestore`);
+      return stores;
+    } catch (error) {
+      console.error("Error fetching stores:", error);
       return [];
     }
   }

@@ -24,6 +24,7 @@ interface AuthContextType {
   ) => Promise<void>;
   logout: () => Promise<void>;
   updateUserProfile: (data: Partial<AuthUser>) => Promise<void>;
+  refreshUserRole: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -33,6 +34,7 @@ const AuthContext = createContext<AuthContextType>({
   signup: async () => {},
   logout: async () => {},
   updateUserProfile: async () => {},
+  refreshUserRole: async () => {},
 });
 
 export const useAuth = () => useContext(AuthContext);
@@ -61,6 +63,7 @@ export const AuthProvider: React.FC<{
           userId?: string;
           email?: string;
           photoURL?: string;
+          role?: string;
         }>("auth_state", {
           isAuthenticated: false,
           userName: "",
@@ -89,7 +92,10 @@ export const AuthProvider: React.FC<{
             const userRole = currentUser.uid
               ? await firebaseService.getUserRole(currentUser.uid)
               : null;
-            console.log("AuthContext: User role retrieved", { userRole });
+            console.log("AuthContext: User role retrieved", {
+              userRole,
+              uid: currentUser.uid,
+            });
 
             const firebaseUser = {
               uid: currentUser.uid,
@@ -100,7 +106,7 @@ export const AuthProvider: React.FC<{
               role: userRole || undefined,
             };
             console.log(
-              "AuthContext: Setting user from Firebase",
+              "AuthContext: Setting user from Firebase with role",
               firebaseUser,
             );
             setUser(firebaseUser);
@@ -109,16 +115,48 @@ export const AuthProvider: React.FC<{
             console.log(
               "AuthContext: No Firebase user but saved auth state exists, using saved state",
             );
-            // If no Firebase user but we have saved auth state, use that
+            // If no Firebase user but we have saved auth state, fetch fresh role from Firestore
+            let userRole = savedAuthState.role;
+
+            // If we have a userId, try to fetch fresh role from Firestore
+            if (savedAuthState.userId) {
+              console.log(
+                "AuthContext: Fetching fresh role from Firestore for saved user",
+                { userId: savedAuthState.userId },
+              );
+              try {
+                const freshRole = await firebaseService.getUserRole(
+                  savedAuthState.userId,
+                );
+                if (freshRole) {
+                  userRole = freshRole;
+                  console.log("AuthContext: Fresh role fetched successfully", {
+                    freshRole,
+                  });
+                } else {
+                  console.log(
+                    "AuthContext: No role found in Firestore, using saved role",
+                    { savedRole: savedAuthState.role },
+                  );
+                }
+              } catch (roleError) {
+                console.error(
+                  "AuthContext: Error fetching fresh role, using saved role:",
+                  roleError,
+                );
+              }
+            }
+
             const savedUser = {
               uid: savedAuthState.userId,
               email: savedAuthState.email,
               displayName: savedAuthState.userName,
               photoURL: savedAuthState.photoURL,
               isAuthenticated: true,
+              role: userRole,
             };
             console.log(
-              "AuthContext: Setting user from saved state",
+              "AuthContext: Setting user from saved state with role",
               savedUser,
             );
             setUser(savedUser);
@@ -137,6 +175,7 @@ export const AuthProvider: React.FC<{
           const localUser = {
             displayName: savedAuthState.userName,
             isAuthenticated: true,
+            role: savedAuthState.role,
           };
           console.log(
             "AuthContext: Setting user from local auth state",
@@ -245,7 +284,10 @@ export const AuthProvider: React.FC<{
         // Get user role from Firestore
         console.log("AuthContext: Getting user role from Firestore");
         const userRole = await firebaseService.getUserRole(firebaseUser.uid);
-        console.log("AuthContext: User role retrieved", { userRole });
+        console.log("AuthContext: User role retrieved", {
+          userRole,
+          uid: firebaseUser.uid,
+        });
 
         const authUser = {
           uid: firebaseUser.uid,
@@ -255,6 +297,10 @@ export const AuthProvider: React.FC<{
           isAuthenticated: true,
           role: userRole || undefined,
         };
+        console.log(
+          "AuthContext: Created auth user object with role",
+          authUser,
+        );
         console.log("AuthContext: Created auth user object", authUser);
 
         console.log("AuthContext: Storing auth state in AsyncStorage");
@@ -264,15 +310,17 @@ export const AuthProvider: React.FC<{
           userId: authUser.uid,
           email: authUser.email,
           photoURL: authUser.photoURL,
+          role: authUser.role,
         });
         console.log("AuthContext: Auth state stored successfully");
 
-        console.log("AuthContext: Setting user state", authUser);
+        console.log("AuthContext: Setting user state with role", authUser);
         // Use a callback to ensure we have the latest state
         setUser((prevUser) => {
           console.log("AuthContext: Setting user with callback", {
             prevUser,
             newUser: authUser,
+            newUserRole: authUser.role,
           });
           return authUser;
         });
@@ -432,6 +480,7 @@ export const AuthProvider: React.FC<{
           userId: authUser.uid,
           email: authUser.email,
           photoURL: authUser.photoURL,
+          role: authUser.role,
         });
         console.log("AuthContext: Auth state stored successfully");
 
@@ -486,6 +535,7 @@ export const AuthProvider: React.FC<{
         userId: updatedUser.uid,
         email: updatedUser.email,
         photoURL: updatedUser.photoURL,
+        role: updatedUser.role,
       });
       console.log("AuthContext: Auth state updated in storage successfully");
 
@@ -494,6 +544,56 @@ export const AuthProvider: React.FC<{
       console.log("AuthContext: User state updated successfully");
     } catch (error) {
       console.error("AuthContext: Error updating user profile:", error);
+    }
+  };
+
+  // Refresh user role from Firestore
+  const refreshUserRole = async () => {
+    console.log("AuthContext: refreshUserRole called");
+    try {
+      if (!user || !user.uid) {
+        console.log("AuthContext: No user or UID found, cannot refresh role");
+        return;
+      }
+
+      if (!firebaseService.isInitialized()) {
+        console.log(
+          "AuthContext: Firebase not initialized, cannot refresh role",
+        );
+        return;
+      }
+
+      console.log("AuthContext: Fetching fresh role from Firestore", {
+        uid: user.uid,
+      });
+      const freshRole = await firebaseService.getUserRole(user.uid);
+      console.log("AuthContext: Fresh role retrieved", {
+        freshRole,
+        previousRole: user.role,
+      });
+
+      if (freshRole !== user.role) {
+        console.log("AuthContext: Role changed, updating user state");
+        const updatedUser = { ...user, role: freshRole || undefined };
+        setUser(updatedUser);
+
+        // Update local storage
+        await storeData("auth_state", {
+          isAuthenticated: true,
+          userName: updatedUser.displayName || "",
+          userId: updatedUser.uid,
+          email: updatedUser.email,
+          photoURL: updatedUser.photoURL,
+          role: updatedUser.role,
+        });
+        console.log("AuthContext: User role updated successfully", {
+          newRole: freshRole,
+        });
+      } else {
+        console.log("AuthContext: Role unchanged, no update needed");
+      }
+    } catch (error) {
+      console.error("AuthContext: Error refreshing user role:", error);
     }
   };
 
@@ -506,6 +606,7 @@ export const AuthProvider: React.FC<{
         signup,
         logout,
         updateUserProfile,
+        refreshUserRole,
       }}
     >
       {children}

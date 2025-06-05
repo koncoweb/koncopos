@@ -6,6 +6,9 @@ import {
   BarChart3,
   History,
   ArrowLeftRight,
+  Warehouse,
+  Store,
+  Users,
 } from "lucide-react-native";
 
 interface MenuItemProps {
@@ -94,6 +97,27 @@ const DashboardMenu = ({
       description: "Create and receive inventory transfers between locations",
       onPress: () => router.push("/transfers"),
       color: "#EC4899",
+    },
+    {
+      title: "Warehouses",
+      icon: <Warehouse />,
+      description: "Manage warehouse locations and user assignments",
+      onPress: () => router.push("/warehouses"),
+      color: "#8B5CF6",
+    },
+    {
+      title: "Stores",
+      icon: <Store />,
+      description: "Manage store settings and configurations",
+      onPress: () => router.push("/stores"),
+      color: "#06B6D4",
+    },
+    {
+      title: "User Management",
+      icon: <Users />,
+      description: "Manage users, roles, and permissions",
+      onPress: () => router.push("/user-management"),
+      color: "#EF4444",
     },
   ];
 
