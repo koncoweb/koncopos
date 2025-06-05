@@ -28,31 +28,31 @@ const LoginScreen = ({ onLogin = () => {} }: LoginScreenProps) => {
   const [error, setError] = useState("");
   const router = useRouter();
 
-  // Create default admin account on component mount
+  // Create default owner account on component mount
   useEffect(() => {
-    const createDefaultAdmin = async () => {
+    const initialize = async () => {
       try {
-        // Check if admin account already exists
+        // Check if owner account already exists
         const accounts = await getData<Record<string, string>>(
           "user_accounts",
           {},
         );
 
-        // If admin account doesn't exist, create it
-        if (!accounts["admin"]) {
+        // If owner account doesn't exist, create it
+        if (!accounts["owner"]) {
           const updatedAccounts = {
             ...accounts,
-            admin: "password123",
+            owner: "password123",
           };
           await storeData("user_accounts", updatedAccounts);
-          console.log("Default admin account created");
+          console.log("Default owner account created");
         }
       } catch (error) {
-        console.error("Error creating default admin account:", error);
+        console.error("Error creating default owner account:", error);
       }
     };
 
-    createDefaultAdmin();
+    initialize();
   }, []);
 
   const [isLoggingIn, setIsLoggingIn] = useState(false);
@@ -189,37 +189,9 @@ const LoginScreen = ({ onLogin = () => {} }: LoginScreenProps) => {
           } else if (firebaseError.code === "auth/too-many-requests") {
             setError("Too many failed login attempts. Please try again later.");
           } else {
-            // If Firebase auth fails, fall back to local auth
-            console.log("Falling back to local auth");
+            setError("An error occurred during login");
           }
         }
-      }
-
-      // Fall back to local authentication if Firebase is not available
-      // Check if it's the admin account
-      console.log("Attempting local authentication");
-      const accounts = await getData<Record<string, string>>(
-        "user_accounts",
-        {},
-      );
-
-      if (accounts[username] === password) {
-        console.log("Local authentication successful");
-        // Store auth state for local authentication
-        await storeData("auth_state", {
-          isAuthenticated: true,
-          userName: username,
-        });
-
-        // Call the onLogin prop with credentials
-        console.log("Local auth successful, calling onLogin");
-        await onLogin(username, password);
-        console.log(
-          "Local auth complete - letting AuthContext handle navigation",
-        );
-      } else {
-        console.log("Local authentication failed");
-        setError("Invalid username or password");
       }
     } catch (error) {
       console.error("Login error:", error);
@@ -346,9 +318,6 @@ const LoginScreen = ({ onLogin = () => {} }: LoginScreenProps) => {
               </Text>
               <Text className="text-gray-700 text-center mt-1">
                 Demo - Username: demo / Password: password
-              </Text>
-              <Text className="text-gray-700 text-center">
-                Admin - Username: admin / Password: password123
               </Text>
             </View>
           </View>

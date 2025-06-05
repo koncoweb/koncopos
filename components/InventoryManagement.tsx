@@ -5,11 +5,14 @@ import {
   TouchableOpacity,
   SafeAreaView,
   useWindowDimensions,
+  Alert,
 } from "react-native";
 import { Search, Plus, ArrowLeft } from "lucide-react-native";
 import ProductList from "./ProductList";
 import ProductDetail from "./ProductDetail";
 import { useInventoryData } from "../hooks/useInventoryData";
+import { useAuth } from '../contexts/AuthContext';
+import { canAccessStore, canAccessWarehouse } from '../utils/permissions';
 
 export interface WarehouseStock {
   warehouseId: string;
@@ -41,6 +44,8 @@ export interface Product {
   warehouseStocks?: WarehouseStock[];
   variations?: ProductVariation[];
   hasVariations?: boolean;
+  storeId?: string;
+  warehouseId?: string;
 }
 
 interface InventoryManagementProps {
@@ -61,8 +66,18 @@ const InventoryManagement = ({
   const isDesktop = width > 768;
 
   // Use the custom hook to manage inventory data
-  const { products, isLoading, saveProduct, deleteProduct, createNewProduct } =
+  const { products: allProducts, isLoading, saveProduct, deleteProduct, createNewProduct } =
     useInventoryData(initialProducts);
+
+  // Permission-based filtering
+  const { user } = useAuth();
+  const products = user?.role === 'owner'
+    ? allProducts
+    : allProducts.filter(
+        (p) =>
+          (p.storeId && canAccessStore(user, p.storeId)) ||
+          (p.warehouseId && canAccessWarehouse(user, p.warehouseId))
+      );
 
   const handleProductSelect = (product: any) => {
     // Find the full product data from the products array to ensure we have all fields
@@ -87,6 +102,17 @@ const InventoryManagement = ({
   };
 
   const handleSaveProduct = (updatedProduct: Product) => {
+    // Permission guard
+    if (
+      user?.role !== 'owner' &&
+      !(
+        (updatedProduct.storeId && canAccessStore(user, updatedProduct.storeId)) ||
+        (updatedProduct.warehouseId && canAccessWarehouse(user, updatedProduct.warehouseId))
+      )
+    ) {
+      Alert.alert('Access Denied', 'You do not have permission to save this product.');
+      return;
+    }
     // Ensure product has a valid ID before saving
     if (!updatedProduct.id || updatedProduct.id === "undefined") {
       updatedProduct.id = `${Date.now()}`;
@@ -130,13 +156,25 @@ const InventoryManagement = ({
   };
 
   const handleDeleteProduct = (productId: string) => {
+    const product = products.find((p) => p.id === productId);
+    if (
+      user?.role !== 'owner' &&
+      product &&
+      !(
+        (product.storeId && canAccessStore(user, product.storeId)) ||
+        (product.warehouseId && canAccessWarehouse(user, product.warehouseId))
+      )
+    ) {
+      Alert.alert('Access Denied', 'You do not have permission to delete this product.');
+      return;
+    }
     deleteProduct(productId);
-    setIsDetailView(false);
     setSelectedProduct(null);
+    setIsDetailView(false);
   };
 
-  const handleAddNewProduct = () => {
-    const newProduct = createNewProduct();
+  const handleAddNewProduct = async () => {
+    const newProduct = await createNewProduct();
     // Ensure new product has warehouseStocks initialized
     if (!newProduct.warehouseStocks) {
       newProduct.warehouseStocks = [];

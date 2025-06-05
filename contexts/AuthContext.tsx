@@ -5,12 +5,14 @@ import firebaseService from "../services/firebaseService";
 import { getData, storeData } from "../services/storage";
 
 interface AuthUser {
-  uid?: string;
-  email?: string;
-  displayName?: string;
+  uid: string;
+  email: string;
+  displayName: string;
   photoURL?: string;
   isAuthenticated: boolean;
-  role?: string;
+  role: "owner" | "manager" | "staff";
+  assignedStores: string[];
+  assignedWarehouses: string[];
 }
 
 interface AuthContextType {
@@ -85,37 +87,45 @@ export const AuthProvider: React.FC<{
               "AuthContext: Firebase has current user, using Firebase user",
             );
             // If Firebase has a current user, use that
-            console.log("AuthContext: Getting user role for Firebase user");
+            console.log("AuthContext: Getting user role and Firestore profile for Firebase user");
             const userRole = currentUser.uid
               ? await firebaseService.getUserRole(currentUser.uid)
               : null;
-            console.log("AuthContext: User role retrieved", { userRole });
-
+            let firestoreProfile: any = null;
+            if (currentUser.uid) {
+              firestoreProfile = await firebaseService.getDocument('users', currentUser.uid);
+              console.log('AuthContext: Fetched Firestore user profile', firestoreProfile);
+            }
             const firebaseUser = {
-              uid: currentUser.uid,
-              email: currentUser.email || undefined,
-              displayName: currentUser.displayName || savedAuthState.userName,
+              uid: currentUser.uid || "",
+              email: currentUser.email || "",
+              displayName: currentUser.displayName || savedAuthState.userName || "",
               photoURL: currentUser.photoURL || undefined,
               isAuthenticated: true,
-              role: userRole || undefined,
+              role: (userRole as "owner" | "manager" | "staff") || "staff",
+              assignedStores: firestoreProfile?.assignedStores ?? [],
+              assignedWarehouses: firestoreProfile?.assignedWarehouses ?? [],
             };
             console.log(
-              "AuthContext: Setting user from Firebase",
+              "AuthContext: Setting user from Firebase and Firestore",
               firebaseUser,
             );
             setUser(firebaseUser);
-            console.log("AuthContext: User set from Firebase successfully");
+            console.log("AuthContext: User set from Firebase and Firestore successfully");
           } else if (savedAuthState.isAuthenticated) {
             console.log(
               "AuthContext: No Firebase user but saved auth state exists, using saved state",
             );
             // If no Firebase user but we have saved auth state, use that
             const savedUser = {
-              uid: savedAuthState.userId,
-              email: savedAuthState.email,
+              uid: savedAuthState.userId || "",
+              email: savedAuthState.email || "",
               displayName: savedAuthState.userName,
               photoURL: savedAuthState.photoURL,
               isAuthenticated: true,
+              role: "staff",
+              assignedStores: [],
+              assignedWarehouses: [],
             };
             console.log(
               "AuthContext: Setting user from saved state",
@@ -127,7 +137,16 @@ export const AuthProvider: React.FC<{
             console.log(
               "AuthContext: No Firebase user and no saved auth state, setting user to null",
             );
-            setUser(null);
+            setUser({
+              uid: "",
+              email: "",
+              displayName: "",
+              photoURL: undefined,
+              isAuthenticated: false,
+              role: "staff",
+              assignedStores: [],
+              assignedWarehouses: [],
+            });
           }
         } else if (savedAuthState.isAuthenticated) {
           console.log(
@@ -135,8 +154,14 @@ export const AuthProvider: React.FC<{
           );
           // If Firebase not initialized but we have saved auth state
           const localUser = {
+            uid: "",
+            email: "",
             displayName: savedAuthState.userName,
+            photoURL: undefined,
             isAuthenticated: true,
+            role: "staff",
+            assignedStores: [],
+            assignedWarehouses: [],
           };
           console.log(
             "AuthContext: Setting user from local auth state",
@@ -249,11 +274,11 @@ export const AuthProvider: React.FC<{
 
         const authUser = {
           uid: firebaseUser.uid,
-          email: firebaseUser.email || undefined,
-          displayName: firebaseUser.displayName || email.split("@")[0],
+          email: firebaseUser.email || "",
+          displayName: firebaseUser.displayName || email.split("@")[0] || "",
           photoURL: firebaseUser.photoURL || undefined,
           isAuthenticated: true,
-          role: userRole || undefined,
+          role: (userRole as "owner" | "manager" | "staff") || "staff",
         };
         console.log("AuthContext: Created auth user object", authUser);
 
@@ -413,12 +438,12 @@ export const AuthProvider: React.FC<{
 
         const authUser = {
           uid: firebaseUser.uid,
-          email: firebaseUser.email || undefined,
+          email: firebaseUser.email || "",
           displayName:
             displayName || firebaseUser.displayName || email.split("@")[0],
           photoURL: firebaseUser.photoURL || undefined,
           isAuthenticated: true,
-          role: userRole || "user",
+          role: (userRole as "owner" | "manager" | "staff") || "staff",
         };
         console.log(
           "AuthContext: Created auth user object from signup",

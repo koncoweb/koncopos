@@ -1,16 +1,7 @@
-import React from "react";
-import { View, Text, TouchableOpacity, ScrollView } from "react-native";
-import { ShoppingBag } from "lucide-react-native";
-
-type Product = {
-  id: string;
-  name: string;
-  price: number;
-  sku: string;
-  stock: number;
-  category: string;
-  image?: string;
-};
+import React from 'react';
+import { View, Text, TouchableOpacity, ScrollView } from 'react-native';
+import { ShoppingBag } from 'lucide-react-native';
+import { Product } from '../models/Product';
 
 interface ProductGridProps {
   products: Product[];
@@ -20,37 +11,37 @@ interface ProductGridProps {
 
 const ProductGrid = ({ products, isMobile, onAddToCart }: ProductGridProps) => {
   return (
-    <ScrollView className={`flex-1 ${isMobile ? "" : "mr-4"}`}>
+    <ScrollView className={`flex-1 ${isMobile ? '' : 'mr-4'}`}>
       <View className="flex-row flex-wrap">
         {products.map((product) => (
           <TouchableOpacity
             key={product.id}
-            className={`${isMobile ? "w-1/2" : "w-1/2"} p-1`}
+            className={`${isMobile ? 'w-1/2' : 'w-1/2'} p-1`}
             onPress={() => onAddToCart(product)}
           >
             <View className="bg-white p-3 rounded-lg border border-gray-200 h-40">
-              <View className="items-center justify-center bg-gray-100 h-20 mb-2 rounded">
-                <ShoppingBag size={24} color="#4B5563" />
+              <View className="flex-row items-center mb-2">
+                <View className="w-10 h-10 bg-blue-100 rounded-full items-center justify-center mr-2">
+                  <ShoppingBag size={16} color="#3b82f6" />
+                </View>
+                <Text className="font-medium text-gray-800" numberOfLines={1}>
+                  {product.name}
+                </Text>
               </View>
-              <Text
-                className="font-medium text-gray-800 mb-1 z-10"
-                numberOfLines={1}
-                style={{ fontSize: 16, fontWeight: "600" }}
-              >
-                {product.name}
-              </Text>
-              <Text className="text-xs text-gray-500 mb-1">
+              <Text className="text-gray-500 text-sm mb-1">
                 SKU: {product.sku}
               </Text>
+              <Text className="text-gray-500 text-sm mb-2">
+                Stock: {product.stock}
+              </Text>
               <View className="flex-row justify-between items-center">
-                <Text className="font-bold">
-                  Rp{" "}
-                  {product.price.toLocaleString("id-ID", {
-                    maximumFractionDigits: 0,
-                  })}
+                <Text className="text-blue-600 font-bold">
+                  ${(product.price || 0).toFixed(2)}
                 </Text>
                 <Text
-                  className={`text-xs ${product.stock < 5 ? "text-red-500" : "text-green-600"}`}
+                  className={`text-xs ${
+                    (product.stock || 0) < 5 ? 'text-red-500' : 'text-green-600'
+                  }`}
                 >
                   {product.stock} in stock
                 </Text>

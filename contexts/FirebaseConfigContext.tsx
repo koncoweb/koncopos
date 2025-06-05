@@ -75,7 +75,8 @@ export const FirebaseConfigProvider: React.FC<{
   }, []);
 
   const hasAdminAccess = (role?: string): boolean => {
-    return role === "admin";
+    // Only users with the 'owner' role have owner access
+    return role === "owner";
   };
 
   const updateConfig = async (
@@ -83,10 +84,10 @@ export const FirebaseConfigProvider: React.FC<{
     isAdmin: boolean = false,
   ): Promise<boolean> => {
     try {
-      // Only allow updates if user has admin access
+      // Only allow updates if user has owner access
       if (!isAdmin) {
         console.warn(
-          "Attempted to update Firebase config without admin privileges",
+          "Attempted to update Firebase config without owner privileges",
         );
         return false;
       }
@@ -104,10 +105,10 @@ export const FirebaseConfigProvider: React.FC<{
 
   const resetConfig = async (isAdmin: boolean = false): Promise<void> => {
     try {
-      // Only allow resets if user has admin access
+      // Only allow resets if user has owner access
       if (!isAdmin) {
         console.warn(
-          "Attempted to reset Firebase config without admin privileges",
+          "Attempted to reset Firebase config without owner privileges",
         );
         return;
       }

@@ -28,7 +28,7 @@ const AdminSettings: React.FC<AdminSettingsProps> = ({ onBack = () => {} }) => {
   const { config, isConfigured, updateConfig, resetConfig } =
     useFirebaseConfig();
   const { user } = useAuth();
-  const isAdmin = user?.role === "admin";
+  const isAdmin = user?.role === "owner"; // Only 'owner' is now superuser
   const [formData, setFormData] = useState<FirebaseConfig>({
     apiKey: "",
     authDomain: "",
@@ -56,11 +56,11 @@ const AdminSettings: React.FC<AdminSettingsProps> = ({ onBack = () => {} }) => {
   };
 
   const handleSave = async () => {
-    // Check if user has admin role
+    // Check if user has owner role
     if (!isAdmin) {
       Alert.alert(
         "Access Denied",
-        "You need administrator privileges to modify these settings.",
+        "You need owner privileges to modify these settings.",
       );
       return;
     }
@@ -106,11 +106,11 @@ const AdminSettings: React.FC<AdminSettingsProps> = ({ onBack = () => {} }) => {
   };
 
   const handleReset = () => {
-    // Check if user has admin role
+    // Check if user has owner role
     if (!isAdmin) {
       Alert.alert(
         "Access Denied",
-        "You need administrator privileges to reset these settings.",
+        "You need owner privileges to reset these settings.",
       );
       return;
     }
@@ -206,7 +206,7 @@ const AdminSettings: React.FC<AdminSettingsProps> = ({ onBack = () => {} }) => {
             <View className="flex-row items-center">
               <ShieldAlert size={24} color="#b91c1c" className="mr-2" />
               <Text className="text-red-800 font-medium">
-                Access Restricted: You need administrator privileges to modify
+                Access Restricted: You need owner privileges to modify
                 these settings.
               </Text>
             </View>

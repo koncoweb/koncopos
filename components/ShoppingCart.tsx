@@ -17,93 +17,38 @@ export type CartItem = {
 };
 
 type ShoppingCartProps = {
-  items?: CartItem[];
-  onUpdateQuantity?: (id: string, newQuantity: number) => void;
-  onRemoveItem?: (id: string) => void;
-  onCheckout?: () => void;
+  cartItems: CartItem[];
+  onUpdateQuantity: (id: string, newQuantity: number) => void;
+  onRemoveItem: (id: string) => void;
+  onCheckout: () => void;
+  onBack?: () => void;
 };
 
 // Empty default cart items array - data will be loaded from storage
 const defaultCartItems: CartItem[] = [];
 
 const ShoppingCart = ({
-  items,
-  onUpdateQuantity = (id, newQuantity) =>
-    console.log(`Update quantity: ${id} to ${newQuantity}`),
-  onRemoveItem = (id) => console.log(`Remove item: ${id}`),
-  onCheckout = () => console.log("Checkout initiated"),
+  cartItems,
+  onUpdateQuantity,
+  onRemoveItem,
+  onCheckout,
+  onBack,
 }: ShoppingCartProps) => {
-  const [cartItems, setCartItems] = useState<CartItem[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-
-  // Load cart items from storage on component mount
-  useEffect(() => {
-    const loadCartItems = async () => {
-      setIsLoading(true);
-      try {
-        // If items prop is provided, use it (for controlled component usage)
-        if (items) {
-          setCartItems(items);
-          await storeData(STORAGE_KEYS.CART_ITEMS, items);
-        } else {
-          // Otherwise load from storage
-          const storedItems = await getData<CartItem[]>(
-            STORAGE_KEYS.CART_ITEMS,
-            defaultCartItems,
-          );
-          setCartItems(storedItems);
-        }
-      } catch (error) {
-        console.error("Error loading cart items:", error);
-        setCartItems(items || defaultCartItems);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    loadCartItems();
-  }, [items]);
-
-  // Save cart items to storage whenever they change
-  useEffect(() => {
-    if (!isLoading && !items) {
-      // Only save if not controlled by parent
-      storeData(STORAGE_KEYS.CART_ITEMS, cartItems);
-    }
-  }, [cartItems, isLoading, items]);
-
   const handleUpdateQuantity = (id: string, change: number) => {
-    const updatedItems = cartItems.map((item) => {
-      if (item.id === id) {
-        const newQuantity = Math.max(1, item.quantity + change);
-        onUpdateQuantity(id, newQuantity);
-        return { ...item, quantity: newQuantity };
-      }
-      return item;
-    });
-    setCartItems(updatedItems);
+    const item = cartItems.find(item => item.id === id);
+    if (item) {
+      const newQuantity = Math.max(1, item.quantity + change);
+      onUpdateQuantity(id, newQuantity);
+    }
   };
 
   const handleRemoveItem = (id: string) => {
-    // Remove item immediately without confirmation for better user experience
     console.log(`Removing item with id: ${id}`);
-
-    // Call the onRemoveItem callback first
     onRemoveItem(id);
-
-    // Then update local state
-    const updatedItems = cartItems.filter((item) => item.id !== id);
-    setCartItems(updatedItems);
-
-    // Save to storage
-    storeData(STORAGE_KEYS.CART_ITEMS, updatedItems);
   };
 
   const calculateSubtotal = () => {
-    return cartItems.reduce(
-      (total, item) => total + item.price * item.quantity,
-      0,
-    );
+    return cartItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
   };
 
   const subtotal = calculateSubtotal();

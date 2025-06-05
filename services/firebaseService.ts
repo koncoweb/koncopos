@@ -5,6 +5,7 @@ import {
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   signOut,
+  updateProfile,
 } from "firebase/auth";
 import {
   getFirestore,
@@ -18,6 +19,9 @@ import {
   deleteDoc,
   query,
   where,
+  orderBy,
+  serverTimestamp,
+  Timestamp,
 } from "firebase/firestore";
 import {
   getStorage,
@@ -238,16 +242,197 @@ class FirebaseService {
 
   // Get user role from Firestore
   public async getUserRole(uid: string): Promise<string | null> {
-    if (!this.db) throw new Error("Firebase Firestore not initialized");
     try {
-      const userDoc = await getDoc(doc(this.db, "profiles", uid));
-      if (userDoc.exists()) {
-        return userDoc.data().role || null;
+      if (!this.db) throw new Error("Firebase Firestore not initialized");
+      console.log(`Getting user role for uid: ${uid}`);
+
+      const userDoc = await this.getDocument("profiles", uid);
+      console.log(`User document retrieved:`, userDoc);
+
+      if (userDoc && userDoc.role) {
+        console.log(`User role found: ${userDoc.role}`);
+        return userDoc.role;
       }
+
+      console.log("No role found for user");
       return null;
     } catch (error) {
-      console.error("Error getting user role:", error);
+      console.error(`Error getting user role for ${uid}:`, error);
       return null;
+    }
+  }
+
+  // User Management Methods
+  public async createUserProfile(uid: string, userData: any) {
+    if (!this.db) throw new Error("Firebase Firestore not initialized");
+    try {
+      const profileData = {
+        ...userData,
+        id: uid,
+        createdAt: serverTimestamp(),
+        role: userData.role || "cashier", // Default role is cashier
+        permissions: userData.permissions || [],
+      };
+
+      await this.addDocument("profiles", profileData, uid);
+      console.log(`Created user profile for ${uid}`);
+      return profileData;
+    } catch (error) {
+      console.error(`Error creating user profile for ${uid}:`, error);
+      throw error;
+    }
+  }
+
+  public async updateUserProfile(uid: string, userData: any) {
+    if (!this.db) throw new Error("Firebase Firestore not initialized");
+    try {
+      await this.updateDocument("profiles", uid, {
+        ...userData,
+        updatedAt: serverTimestamp(),
+      });
+      console.log(`Updated user profile for ${uid}`);
+      return true;
+    } catch (error) {
+      console.error(`Error updating user profile for ${uid}:`, error);
+      throw error;
+    }
+  }
+
+  public async getUserProfiles() {
+    if (!this.db) throw new Error("Firebase Firestore not initialized");
+    try {
+      const profiles = await this.getCollection("profiles");
+      return profiles;
+    } catch (error) {
+      console.error("Error getting user profiles:", error);
+      return [];
+    }
+  }
+
+  // Store Management Methods
+  public async getStores() {
+    if (!this.db) throw new Error("Firebase Firestore not initialized");
+    try {
+      const stores = await this.getCollection("stores");
+      return stores;
+    } catch (error) {
+      console.error("Error getting stores:", error);
+      return [];
+    }
+  }
+
+  public async createStore(storeData: any) {
+    if (!this.db) throw new Error("Firebase Firestore not initialized");
+    try {
+      const store = await this.addDocument("stores", {
+        ...storeData,
+        createdAt: serverTimestamp(),
+      });
+      console.log(`Created store: ${store.id}`);
+      return store;
+    } catch (error) {
+      console.error("Error creating store:", error);
+      throw error;
+    }
+  }
+
+  public async updateStore(storeId: string, storeData: any) {
+    if (!this.db) throw new Error("Firebase Firestore not initialized");
+    try {
+      await this.updateDocument("stores", storeId, {
+        ...storeData,
+        updatedAt: serverTimestamp(),
+      });
+      console.log(`Updated store: ${storeId}`);
+      return true;
+    } catch (error) {
+      console.error(`Error updating store ${storeId}:`, error);
+      throw error;
+    }
+  }
+
+  public async deleteStore(storeId: string) {
+    if (!this.db) throw new Error("Firebase Firestore not initialized");
+    try {
+      await this.deleteDocument("stores", storeId);
+      console.log(`Deleted store: ${storeId}`);
+      return true;
+    } catch (error) {
+      console.error(`Error deleting store ${storeId}:`, error);
+      throw error;
+    }
+  }
+
+  // Warehouse Management Methods
+  public async getWarehouses() {
+    if (!this.db) throw new Error("Firebase Firestore not initialized");
+    try {
+      const warehouses = await this.getCollection("warehouses");
+      return warehouses;
+    } catch (error) {
+      console.error("Error getting warehouses:", error);
+      return [];
+    }
+  }
+
+  public async getWarehousesByStore(storeId: string) {
+    if (!this.db) throw new Error("Firebase Firestore not initialized");
+    try {
+      if (!this.db) return [];
+
+      const warehousesRef = collection(this.db, "warehouses");
+      const q = query(warehousesRef, where("storeId", "==", storeId));
+      const querySnapshot = await getDocs(q);
+
+      return querySnapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+      }));
+    } catch (error) {
+      console.error(`Error getting warehouses for store ${storeId}:`, error);
+      return [];
+    }
+  }
+
+  public async createWarehouse(warehouseData: any) {
+    if (!this.db) throw new Error("Firebase Firestore not initialized");
+    try {
+      const warehouse = await this.addDocument("warehouses", {
+        ...warehouseData,
+        createdAt: serverTimestamp(),
+      });
+      console.log(`Created warehouse: ${warehouse.id}`);
+      return warehouse;
+    } catch (error) {
+      console.error("Error creating warehouse:", error);
+      throw error;
+    }
+  }
+
+  public async updateWarehouse(warehouseId: string, warehouseData: any) {
+    if (!this.db) throw new Error("Firebase Firestore not initialized");
+    try {
+      await this.updateDocument("warehouses", warehouseId, {
+        ...warehouseData,
+        updatedAt: serverTimestamp(),
+      });
+      console.log(`Updated warehouse: ${warehouseId}`);
+      return true;
+    } catch (error) {
+      console.error(`Error updating warehouse ${warehouseId}:`, error);
+      throw error;
+    }
+  }
+
+  public async deleteWarehouse(warehouseId: string) {
+    if (!this.db) throw new Error("Firebase Firestore not initialized");
+    try {
+      await this.deleteDocument("warehouses", warehouseId);
+      console.log(`Deleted warehouse: ${warehouseId}`);
+      return true;
+    } catch (error) {
+      console.error(`Error deleting warehouse ${warehouseId}:`, error);
+      throw error;
     }
   }
 

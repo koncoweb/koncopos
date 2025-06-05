@@ -1,36 +1,38 @@
-import React, { useState, useEffect } from "react";
-import {
-  View,
-  Text,
-  TouchableOpacity,
-  TextInput,
-  ScrollView,
-  SafeAreaView,
-  Dimensions,
-  useWindowDimensions,
-  ActivityIndicator,
-} from "react-native";
-import {
-  Search,
-  ArrowLeft,
-  Barcode,
-  ShoppingCart as CartIcon,
-} from "lucide-react-native";
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { 
+  View, 
+  Text, 
+  TouchableOpacity, 
+  TextInput, 
+  ScrollView, 
+  SafeAreaView, 
+  ActivityIndicator, 
+  Alert, 
+  Platform,
+  useWindowDimensions 
+} from 'react-native';
+import Constants from 'expo-constants';
+
+// Import types and models
+import { Product } from '../models/Product';
+import { useAuth } from '../contexts/AuthContext';
+import { canAccessStore } from '../utils/permissions';
+
+// Import Lucide icons with type assertion to fix prop types
+import * as LucideIcons from 'lucide-react-native';
+
+// Create typed icon components
+const Search = LucideIcons.Search as React.ComponentType<{ size: number; color: string }>;
+const ArrowLeft = LucideIcons.ArrowLeft as React.ComponentType<{ size: number; color: string }>;
+const Barcode = LucideIcons.Barcode as React.ComponentType<{ size: number; color: string }>;
+const CartIcon = LucideIcons.ShoppingCart as React.ComponentType<{ size: number; color: string }>;
+
+// Import components
 import ShoppingCart from "./ShoppingCart";
 import PaymentProcessor from "./PaymentProcessor";
 import ProductGrid from "./ProductGrid";
 import MobileShoppingCart from "./MobileShoppingCart";
 import { getData, storeData, STORAGE_KEYS } from "../services/storage";
-
-type Product = {
-  id: string;
-  name: string;
-  price: number;
-  sku: string;
-  stock: number;
-  category: string;
-  image?: string;
-};
 
 type CartItem = {
   id: string;
@@ -38,42 +40,97 @@ type CartItem = {
   price: number;
   quantity: number;
   sku: string;
+  storeId: string; // Add storeId to match Product type
 };
+
+interface PaymentProcessorProps {
+  amount: number;
+  onPaymentComplete: (method: string, id: string) => Promise<boolean>;
+  onCancel: () => void;
+}
 
 interface POSInterfaceProps {
   onBack?: () => void;
+  onTransactionComplete?: () => void;
+  storeId?: string;
 }
 
-const POSInterface = ({ onBack = () => {} }: POSInterfaceProps) => {
+const POSInterface: React.FC<POSInterfaceProps> = ({ 
+  onBack = () => {}, 
+  onTransactionComplete = () => {}, 
+  storeId = '' 
+}) => {
+  // State for products and UI
+  const [products, setProducts] = useState<Product[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
   const [showPayment, setShowPayment] = useState(false);
-  const [activeCategory, setActiveCategory] = useState("All");
-  const [showMobileCart, setShowMobileCart] = useState(false);
-  const { width } = useWindowDimensions();
-  const isMobile = width < 768;
-  const [products, setProducts] = useState<Product[]>([]);
+  const [activeCategory, setActiveCategory] = useState<string>('All');
   const [isLoading, setIsLoading] = useState(true);
+  const [user, setUser] = useState<any>(null); // Temporary any type, should be properly typed
+  const [isMobile, setIsMobile] = useState(false);
+  const [showMobileCart, setShowMobileCart] = useState(false);
+  
+  // Hooks
+  const { width } = useWindowDimensions();
+  const auth = useAuth();
+  const effectiveStoreId = storeId || '';
+  
+  useEffect(() => {
+    if (auth?.user) {
+      setUser(auth.user);
+    }
+    setIsMobile(width < 768);
+  }, [auth, width]);
+  
+  // Calculate cart total
+  const cartTotal = useMemo(() => {
+    return cartItems.reduce((total, item) => total + (item.price * item.quantity), 0);
+  }, [cartItems]);
+  
+  // Process payment completion
+  const processPaymentComplete = useCallback(async (
+    paymentMethod: string,
+    transactionId: string
+  ) => {
+    // Process payment completion
+    setShowPayment(false);
+    setCartItems([]);
+    onTransactionComplete();
+    
+    // Show success message
+    Alert.alert("Success", `Payment of $${cartTotal.toFixed(2)} completed successfully!`);
+    
+    return true; // Indicate success
+  }, [cartTotal, onTransactionComplete]);
+  
+  // Handle payment cancellation
+  const handlePaymentCancel = useCallback(() => {
+    setShowPayment(false);
+  }, []);
+  
 
+  
   // Load products from storage
   useEffect(() => {
     const loadProducts = async () => {
-      setIsLoading(true);
       try {
-        const storedProducts = await getData(STORAGE_KEYS.PRODUCTS, []);
-        console.log(
-          `Loaded ${storedProducts.length} products from storage for POS`,
-        );
+        setIsLoading(true);
+        // Use the correct getData signature with default value as second argument
+        const storedProducts = (await getData(STORAGE_KEYS.PRODUCTS, [])) as Product[];
 
         // Map inventory products to POS product format
-        const formattedProducts = storedProducts.map((product) => ({
-          id: product.id,
-          name: product.name,
-          price: product.price,
-          sku: product.sku,
-          stock: product.currentStock,
-          category: product.category,
-          image: product.imageUrl,
+        const formattedProducts: Product[] = storedProducts.map((product) => ({
+          ...product,
+          stock: product.stock || 0, // Ensure stock is a number
+          category: product.category || 'Uncategorized',
+          imageUrl: product.imageUrl || '',
+          // Ensure required fields have defaults
+          id: product.id || '',
+          name: product.name || 'Unnamed Product',
+          price: product.price || 0,
+          sku: product.sku || '',
+          storeId: product.storeId || effectiveStoreId,
         }));
 
         setProducts(formattedProducts);
@@ -89,99 +146,107 @@ const POSInterface = ({ onBack = () => {} }: POSInterfaceProps) => {
   }, []);
 
   // Extract unique categories from products
-  const allCategories = [
+  const allCategories: string[] = [
     "All",
-    ...new Set(products.map((product) => product.category)),
+    ...Array.from(new Set(products
+      .map((product: Product) => product.category)
+      .filter((category): category is string => Boolean(category))
+    ))
   ];
-  const categories = allCategories.filter(Boolean); // Remove any empty categories
+  const categories = allCategories;
 
-  const filteredProducts = products.filter(
-    (product) =>
-      (activeCategory === "All" || product.category === activeCategory) &&
-      (searchQuery === "" ||
-        product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        product.sku.toLowerCase().includes(searchQuery.toLowerCase())),
-  );
+  // Filter products based on search, category, and permissions
+  const filteredProducts = products.filter((product: Product) => {
+    try {
+      const matchesCategory = activeCategory === 'All' || product.category === activeCategory;
+      const matchesSearch = searchQuery === '' || 
+        (product.name?.toLowerCase() || '').includes(searchQuery.toLowerCase()) || 
+        (product.sku?.toLowerCase() || '').includes(searchQuery.toLowerCase());
+      const hasPermission = user?.role === 'owner' || 
+        (product.storeId ? canAccessStore(user, product.storeId || '') : false);
+      
+      return matchesCategory && matchesSearch && hasPermission;
+    } catch (error) {
+      console.error('Error filtering product:', product, error);
+      return false;
+    }
+  });
+  
+  // Add to cart function with proper type safety
+  const addToCart = useCallback((product: Product) => {
+    if (user?.role !== 'owner' && !canAccessStore(user, product.storeId || '')) {
+      Alert.alert("Access Denied", "You don't have permission to add this product to cart.");
+      return;
+    }
 
-  const addToCart = (product: Product) => {
-    setCartItems((prevItems) => {
+    setCartItems((prevItems: CartItem[]) => {
       const existingItem = prevItems.find((item) => item.id === product.id);
-
       if (existingItem) {
         return prevItems.map((item) =>
           item.id === product.id
             ? { ...item, quantity: item.quantity + 1 }
-            : item,
+            : item
         );
-      } else {
-        return [
-          ...prevItems,
-          {
-            id: product.id,
-            name: product.name,
-            price: product.price,
-            quantity: 1,
-            sku: product.sku,
-          },
-        ];
       }
+      return [
+        ...prevItems,
+        {
+          id: product.id,
+          name: product.name,
+          price: product.price,
+          quantity: 1,
+          sku: product.sku || '',
+          storeId: product.storeId || effectiveStoreId,
+        },
+      ];
     });
-  };
+  }, [user, effectiveStoreId]);
 
-  const updateCartItemQuantity = (id: string, newQuantity: number) => {
-    setCartItems((prevItems) =>
+  // Update product quantity in cart
+  const updateQuantity = useCallback((productId: string, quantity: number) => {
+    setCartItems((prevItems: CartItem[]) =>
       prevItems.map((item) =>
-        item.id === id ? { ...item, quantity: newQuantity } : item,
-      ),
+        item.id === productId ? { ...item, quantity } : item
+      )
     );
-  };
+  }, []);
 
-  const removeCartItem = (id: string) => {
-    console.log(`Removing item with id: ${id}`);
-    setCartItems((prevItems) => {
-      const updatedItems = prevItems.filter((item) => item.id !== id);
+  // Remove item from cart
+  const removeFromCart = useCallback((productId: string) => {
+    console.log(`Removing item with id: ${productId}`);
+    setCartItems((prevItems: CartItem[]) => {
+      const updatedItems = prevItems.filter((item) => item.id !== productId);
       console.log("Updated cart items:", updatedItems);
       return updatedItems;
     });
-  };
+  }, []);
 
-  const handleCheckout = () => {
-    if (cartItems.length > 0) {
-      setShowPayment(true);
+  const handleCheckout = useCallback(() => {
+    if (cartItems.length === 0) {
+      Alert.alert("Cart is empty", "Please add items to the cart before checking out.");
+      return;
     }
-  };
-
-  const handlePaymentComplete = (
-    paymentMethod: string,
-    transactionId: string,
-  ) => {
-    // In a real app, you would process the transaction and update inventory
-    console.log(
-      `Payment completed with ${paymentMethod}, transaction ID: ${transactionId}`,
-    );
-
-    // Reset cart and return to product selection
-    setTimeout(() => {
-      setCartItems([]);
-      setShowPayment(false);
-    }, 3000);
-  };
-
-  const calculateCartTotal = () => {
-    return cartItems.reduce(
-      (total, item) => total + item.price * item.quantity,
-      0,
-    );
-  };
+    // Permission guard: Only allow checkout if user can access all products in cart
+    if (user?.role !== 'owner') {
+      for (const item of cartItems) {
+        const product = products.find(p => p.id === item.id);
+        if (product && !canAccessStore(user, product.storeId || "")) {
+          Alert.alert('Access Denied', 'You do not have permission to checkout items from this store.');
+          return;
+        }
+      }
+    }
+    setShowPayment(true);
+  }, [cartItems, user, products]);
 
   if (showPayment) {
     return (
-      <SafeAreaView className="flex-1 bg-gray-50">
+      <SafeAreaView className="flex-1 bg-white">
         <PaymentProcessor
-          cartTotal={calculateCartTotal()}
+          cartTotal={cartTotal}
           cartItems={cartItems}
-          onPaymentComplete={handlePaymentComplete}
-          onCancel={() => setShowPayment(false)}
+          onPaymentComplete={processPaymentComplete}
+          onCancel={handlePaymentCancel}
         />
       </SafeAreaView>
     );
@@ -189,111 +254,112 @@ const POSInterface = ({ onBack = () => {} }: POSInterfaceProps) => {
 
   return (
     <SafeAreaView className="flex-1 bg-gray-50">
-      <View className="flex-1 p-4">
+      {/* Main POS Interface */}
+      <View className="flex-1">
         {/* Header */}
-        <View className="flex-row items-center mb-4">
-          <TouchableOpacity onPress={onBack} className="mr-3">
-            <ArrowLeft size={24} color="#4B5563" />
+        <View className="flex-row items-center justify-between p-4 border-b border-gray-200">
+          <TouchableOpacity onPress={onBack} className="p-2">
+            <ArrowLeft size={24} color="#000" />
           </TouchableOpacity>
-          <Text className="text-xl font-bold">Point of Sale</Text>
-
-          {isMobile && (
-            <TouchableOpacity
-              onPress={() => setShowMobileCart(true)}
-              className="ml-auto flex-row items-center bg-blue-600 px-3 py-2 rounded-lg"
-            >
-              <CartIcon size={20} color="white" />
-              <Text className="text-white font-medium ml-1">
-                {cartItems.length}
-              </Text>
-            </TouchableOpacity>
-          )}
+          <Text className="text-xl font-semibold">Point of Sale</Text>
+          <TouchableOpacity 
+            onPress={() => setShowMobileCart(true)}
+            className="p-2 relative"
+            disabled={!isMobile}
+          >
+            <CartIcon size={24} color="#000" />
+            {cartItems.length > 0 && (
+              <View className="absolute -top-1 -right-1 bg-red-500 rounded-full w-5 h-5 items-center justify-center">
+                <Text className="text-white text-xs font-bold">{cartItems.reduce((sum, item) => sum + item.quantity, 0)}</Text>
+              </View>
+            )}
+          </TouchableOpacity>
         </View>
 
-        {/* Search and Scan */}
-        <View className="flex-row mb-4">
-          <View className="flex-1 flex-row items-center bg-white rounded-lg px-3 mr-2 border border-gray-200">
-            <Search size={20} color="#9CA3AF" />
+        {/* Search Bar */}
+        <View className="p-4 border-b border-gray-200">
+          <View className="flex-row items-center bg-gray-100 rounded-lg px-3 py-2">
+            <Search size={20} color="#6b7280" />
             <TextInput
-              className="flex-1 py-2 px-2"
-              placeholder="Search products by name or SKU"
+              className="flex-1 ml-2"
+              placeholder="Search products..."
               value={searchQuery}
               onChangeText={setSearchQuery}
+              clearButtonMode="while-editing"
             />
           </View>
-          <TouchableOpacity className="bg-blue-600 p-3 rounded-lg">
-            <Barcode size={20} color="white" />
-          </TouchableOpacity>
         </View>
 
-        {/* Categories */}
-        <View className="mb-4">
-          <ScrollView
-            horizontal={isMobile}
-            showsHorizontalScrollIndicator={false}
-            className="-mx-1"
-          >
-            <View className={`flex-row ${isMobile ? "" : "flex-wrap"}`}>
-              {categories.map((category) => (
-                <TouchableOpacity
-                  key={category}
-                  onPress={() => setActiveCategory(category)}
-                  className={`m-1 px-4 py-3 rounded-lg items-center justify-center ${isMobile ? "w-[100px]" : "w-[80px] h-[80px]"} ${activeCategory === category ? "bg-blue-600" : "bg-white border border-gray-200"}`}
-                >
-                  <Text
-                    className={`${activeCategory === category ? "text-white" : "text-gray-700"} text-center font-medium`}
-                  >
-                    {category}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </ScrollView>
-        </View>
-
-        <View className={`flex-1 ${isMobile ? "" : "flex-row"}`}>
-          {/* Product Grid */}
-          {isLoading ? (
-            <View className="flex-1 justify-center items-center">
-              <ActivityIndicator size="large" color="#3b82f6" />
-              <Text className="mt-4 text-gray-600">Loading products...</Text>
-            </View>
-          ) : products.length === 0 ? (
-            <View className="flex-1 justify-center items-center">
-              <Text className="text-gray-600 text-center">
-                No products found. Add products in the Inventory section.
+        {/* Category Filter */}
+        <ScrollView 
+          horizontal 
+          showsHorizontalScrollIndicator={false}
+          className="border-b border-gray-200"
+          contentContainerStyle={{ paddingHorizontal: 16, paddingVertical: 12 }}
+        >
+          {categories.map((category) => (
+            <TouchableOpacity
+              key={category}
+              onPress={() => setActiveCategory(category)}
+              className={`px-4 py-2 rounded-full mr-2 ${
+                activeCategory === category ? 'bg-blue-500' : 'bg-gray-100'
+              }`}
+            >
+              <Text 
+                className={`text-sm font-medium ${
+                  activeCategory === category ? 'text-white' : 'text-gray-700'
+                }`}
+              >
+                {category}
               </Text>
-            </View>
-          ) : (
-            <ProductGrid
-              products={filteredProducts}
-              isMobile={isMobile}
-              onAddToCart={addToCart}
-            />
-          )}
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+        <View className="flex-1 flex-row">
+          <View className="flex-1">
+            {isLoading ? (
+              <View className="flex-1 justify-center items-center">
+                <ActivityIndicator size="large" color="#3b82f6" />
+                <Text className="mt-4 text-gray-600">Loading products...</Text>
+              </View>
+            ) : filteredProducts.length === 0 ? (
+              <View className="flex-1 justify-center items-center">
+                <Text className="text-gray-500">No products found</Text>
+              </View>
+            ) : (
+              <ProductGrid
+                products={filteredProducts}
+                onAddToCart={addToCart}
+                isMobile={isMobile}
+              />
+            )}
+          </View>
 
           {/* Shopping Cart - Only show on desktop */}
           {!isMobile && (
             <View className="w-2/5">
               <ShoppingCart
-                items={cartItems}
-                onUpdateQuantity={updateCartItemQuantity}
-                onRemoveItem={removeCartItem}
+                cartItems={cartItems}
+                onUpdateQuantity={updateQuantity}
+                onRemoveItem={removeFromCart}
                 onCheckout={handleCheckout}
+                onBack={onBack}
               />
             </View>
           )}
         </View>
 
         {/* Mobile Cart Modal */}
-        <MobileShoppingCart
-          visible={isMobile && showMobileCart}
-          cartItems={cartItems}
-          onUpdateQuantity={updateCartItemQuantity}
-          onRemoveItem={removeCartItem}
-          onCheckout={handleCheckout}
-          onClose={() => setShowMobileCart(false)}
-        />
+        {isMobile && (
+          <MobileShoppingCart
+            visible={showMobileCart}
+            cartItems={cartItems}
+            onUpdateQuantity={updateQuantity}
+            onRemoveItem={removeFromCart}
+            onCheckout={handleCheckout}
+            onClose={() => setShowMobileCart(false)}
+          />
+        )}
       </View>
     </SafeAreaView>
   );
