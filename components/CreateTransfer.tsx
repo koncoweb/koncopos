@@ -6,12 +6,27 @@ import {
   TouchableOpacity,
   TextInput,
   ActivityIndicator,
+  Alert,
+  Share,
+  Platform,
 } from "react-native";
-import { ChevronDown, Plus, Minus, Check, X, Truck } from "lucide-react-native";
+import {
+  ChevronDown,
+  Plus,
+  Minus,
+  Check,
+  X,
+  Truck,
+  Download,
+  FileText,
+} from "lucide-react-native";
 import firebaseService from "../services/firebaseService";
 import { useFirebaseConfig } from "../contexts/FirebaseConfigContext";
 import { useInventoryData } from "../hooks/useInventoryData";
 import LocationChooser from "./LocationChooser";
+import RNHTMLtoPDF from "react-native-html-to-pdf";
+import * as FileSystem from "expo-file-system";
+import * as Sharing from "expo-sharing";
 
 interface Product {
   id: string;
@@ -58,6 +73,8 @@ const CreateTransfer = ({
   const [isLoadingLocations, setIsLoadingLocations] = useState(false);
   const [availableProducts, setAvailableProducts] = useState<Product[]>([]);
   const [isLoadingProducts, setIsLoadingProducts] = useState(false);
+  const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
+  const [lastCreatedTransfer, setLastCreatedTransfer] = useState<any>(null);
 
   // Load locations and products from database
   useEffect(() => {
@@ -278,6 +295,9 @@ const CreateTransfer = ({
       );
       console.log("Transfer saved successfully:", savedTransfer);
 
+      // Store the created transfer for PDF generation
+      setLastCreatedTransfer(savedTransfer);
+
       // Update stock levels for all products in the transfer
       const transferProducts = selectedProducts.map((product) => ({
         id: product.id,
@@ -298,10 +318,114 @@ const CreateTransfer = ({
         // You might want to show a warning to the user here
       }
 
-      onTransferCreated();
+      // Show success message with option to generate PDF
+      Alert.alert(
+        "Transfer Berhasil Dibuat",
+        "Transfer inventori telah selesai dan stok telah diperbarui.",
+        [
+          {
+            text: "Buat PDF",
+            onPress: () => generateTransferPDF(savedTransfer),
+          },
+          {
+            text: "Selesai",
+            onPress: onTransferCreated,
+          },
+        ],
+      );
     } catch (error) {
       console.error("Error creating transfer:", error);
       // You might want to show an error message to the user here
+    }
+  };
+
+  const generateTransferPDF = async (transferData: any) => {
+    if (!transferData) {
+      Alert.alert("Error", "Tidak ada data transfer untuk membuat PDF.");
+      return;
+    }
+
+    setIsGeneratingPDF(true);
+    try {
+      console.log("Generating PDF for transfer:", transferData.id);
+
+      // Generate HTML content for the PDF
+      const htmlContent =
+        await firebaseService.generateTransferDocumentHTML(transferData);
+
+      if (Platform.OS === "web") {
+        // For web platform, create a downloadable HTML file
+        const blob = new Blob([htmlContent], { type: "text/html" });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = `Transfer_${transferData.id || "Document"}_${new Date().toISOString().split("T")[0]}.html`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+
+        Alert.alert(
+          "Berhasil",
+          "Dokumen transfer telah diunduh sebagai file HTML.",
+        );
+      } else {
+        // For mobile platforms, try to generate PDF
+        try {
+          const options = {
+            html: htmlContent,
+            fileName: `Transfer_${transferData.id || "Document"}_${new Date().toISOString().split("T")[0]}`,
+            directory: "Documents",
+          };
+
+          const file = await RNHTMLtoPDF.convert(options);
+          console.log("PDF generated:", file.filePath);
+
+          // Share the PDF file
+          if (await Sharing.isAvailableAsync()) {
+            await Sharing.shareAsync(file.filePath, {
+              mimeType: "application/pdf",
+              dialogTitle: "Share Transfer Document",
+            });
+          } else {
+            Alert.alert(
+              "PDF Dibuat",
+              `Dokumen transfer disimpan di: ${file.filePath}`,
+            );
+          }
+        } catch (pdfError) {
+          console.error(
+            "PDF generation failed, falling back to HTML:",
+            pdfError,
+          );
+
+          // Fallback: Save as HTML file
+          const fileName = `Transfer_${transferData.id || "Document"}_${new Date().toISOString().split("T")[0]}.html`;
+          const fileUri = `${FileSystem.documentDirectory}${fileName}`;
+
+          await FileSystem.writeAsStringAsync(fileUri, htmlContent);
+
+          if (await Sharing.isAvailableAsync()) {
+            await Sharing.shareAsync(fileUri, {
+              mimeType: "text/html",
+              dialogTitle: "Share Transfer Document",
+            });
+          }
+
+          Alert.alert(
+            "Dokumen Dibuat",
+            "Dokumen transfer telah disimpan sebagai file HTML dan siap dibagikan.",
+          );
+        }
+      }
+    } catch (error) {
+      console.error("Error generating transfer document:", error);
+      Alert.alert(
+        "Error",
+        "Gagal membuat dokumen transfer. Silakan coba lagi.",
+      );
+    } finally {
+      setIsGeneratingPDF(false);
     }
   };
 
@@ -524,6 +648,26 @@ const CreateTransfer = ({
 
       {/* Bottom Action Buttons */}
       <View className="p-4 border-t border-gray-200 bg-white">
+        {/* PDF Generation Button - Show only if transfer was created */}
+        {lastCreatedTransfer && (
+          <View className="mb-3">
+            <TouchableOpacity
+              className="w-full p-3 bg-green-500 rounded-md items-center flex-row justify-center"
+              onPress={() => generateTransferPDF(lastCreatedTransfer)}
+              disabled={isGeneratingPDF}
+            >
+              {isGeneratingPDF ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <FileText size={18} color="#fff" />
+              )}
+              <Text className="font-medium ml-2 text-white">
+                {isGeneratingPDF ? "Membuat PDF..." : "Buat Dokumen Transfer"}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
         <View className="flex-row justify-between">
           <TouchableOpacity
             className="flex-1 mr-2 p-3 border border-gray-300 rounded-md items-center"

@@ -430,6 +430,242 @@ class FirebaseService {
     const storageRef = ref(this.storage, path);
     return await getDownloadURL(storageRef);
   }
+
+  // Get user display name by UID
+  public async getUserDisplayName(uid: string): Promise<string> {
+    if (!this.db) return uid;
+    try {
+      const userDoc = await getDoc(doc(this.db, "users", uid));
+      if (userDoc.exists()) {
+        const userData = userDoc.data();
+        return userData.displayName || userData.email?.split("@")[0] || uid;
+      }
+      return uid;
+    } catch (error) {
+      console.error("Error getting user display name:", error);
+      return uid;
+    }
+  }
+
+  // Transfer document generation
+  public async generateTransferDocumentHTML(
+    transferData: any,
+  ): Promise<string> {
+    const currentDate = new Date().toLocaleDateString("id-ID");
+    const currentTime = new Date().toLocaleTimeString("id-ID");
+
+    // Get user display name if createdBy is a UID
+    let createdByName = transferData.createdBy || "Sistem";
+    if (transferData.createdBy && transferData.createdBy.length > 10) {
+      // Likely a UID, try to get display name
+      createdByName = await this.getUserDisplayName(transferData.createdBy);
+    }
+
+    const productsHTML = transferData.products
+      .map(
+        (product: any, index: number) => `
+        <tr>
+          <td style="padding: 8px; border-bottom: 1px solid #ddd;">${index + 1}</td>
+          <td style="padding: 8px; border-bottom: 1px solid #ddd;">${product.name}</td>
+          <td style="padding: 8px; border-bottom: 1px solid #ddd;">${product.sku}</td>
+          <td style="padding: 8px; border-bottom: 1px solid #ddd; text-align: center;">${product.quantity}</td>
+          <td style="padding: 8px; border-bottom: 1px solid #ddd; text-align: right;">Rp ${(product.price || 0).toLocaleString("id-ID")}</td>
+          <td style="padding: 8px; border-bottom: 1px solid #ddd; text-align: right;">Rp ${((product.price || 0) * product.quantity).toLocaleString("id-ID")}</td>
+        </tr>`,
+      )
+      .join("");
+
+    const totalValue = transferData.products.reduce(
+      (sum: number, product: any) =>
+        sum + (product.price || 0) * product.quantity,
+      0,
+    );
+
+    return `
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="UTF-8">
+        <title>Dokumen Transfer - ${transferData.id || "N/A"}</title>
+        <style>
+            body {
+                font-family: Arial, sans-serif;
+                margin: 20px;
+                color: #333;
+            }
+            .header {
+                text-align: center;
+                margin-bottom: 30px;
+                border-bottom: 2px solid #007bff;
+                padding-bottom: 20px;
+            }
+            .company-name {
+                font-size: 24px;
+                font-weight: bold;
+                color: #007bff;
+                margin-bottom: 5px;
+            }
+            .document-title {
+                font-size: 20px;
+                font-weight: bold;
+                margin-top: 10px;
+            }
+            .info-section {
+                display: flex;
+                justify-content: space-between;
+                margin-bottom: 30px;
+            }
+            .info-box {
+                width: 48%;
+                padding: 15px;
+                border: 1px solid #ddd;
+                border-radius: 5px;
+                background-color: #f9f9f9;
+            }
+            .info-title {
+                font-weight: bold;
+                color: #007bff;
+                margin-bottom: 10px;
+                font-size: 16px;
+            }
+            .info-item {
+                margin-bottom: 5px;
+            }
+            .products-table {
+                width: 100%;
+                border-collapse: collapse;
+                margin-bottom: 30px;
+            }
+            .products-table th {
+                background-color: #007bff;
+                color: white;
+                padding: 12px 8px;
+                text-align: left;
+                font-weight: bold;
+            }
+            .products-table td {
+                padding: 8px;
+                border-bottom: 1px solid #ddd;
+            }
+            .products-table tr:nth-child(even) {
+                background-color: #f9f9f9;
+            }
+            .summary {
+                margin-top: 20px;
+                padding: 15px;
+                background-color: #f0f8ff;
+                border: 1px solid #007bff;
+                border-radius: 5px;
+            }
+            .summary-item {
+                display: flex;
+                justify-content: space-between;
+                margin-bottom: 5px;
+            }
+            .total {
+                font-weight: bold;
+                font-size: 18px;
+                border-top: 2px solid #007bff;
+                padding-top: 10px;
+                margin-top: 10px;
+            }
+            .footer {
+                margin-top: 40px;
+                padding-top: 20px;
+                border-top: 1px solid #ddd;
+                text-align: center;
+                color: #666;
+                font-size: 12px;
+            }
+            .signature-section {
+                margin-top: 40px;
+                display: flex;
+                justify-content: space-between;
+            }
+            .signature-box {
+                width: 45%;
+                text-align: center;
+            }
+            .signature-line {
+                border-top: 1px solid #333;
+                margin-top: 40px;
+                padding-top: 5px;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="header">
+            <div class="company-name">StockPoint Pro</div>
+            <div class="document-title">DOKUMEN TRANSFER INVENTORI</div>
+        </div>
+
+        <div class="info-section">
+            <div class="info-box">
+                <div class="info-title">Informasi Transfer</div>
+                <div class="info-item"><strong>ID Transfer:</strong> ${transferData.id || "N/A"}</div>
+                <div class="info-item"><strong>Tanggal:</strong> ${currentDate}</div>
+                <div class="info-item"><strong>Waktu:</strong> ${currentTime}</div>
+                <div class="info-item"><strong>Status:</strong> ${transferData.status === "completed" ? "Selesai" : transferData.status || "Selesai"}</div>
+                <div class="info-item"><strong>Dibuat Oleh:</strong> ${createdByName}</div>
+            </div>
+            
+            <div class="info-box">
+                <div class="info-title">Detail Transfer</div>
+                <div class="info-item"><strong>Dari:</strong> ${transferData.sourceLocationName} (${transferData.sourceLocationType === "warehouse" ? "Gudang" : transferData.sourceLocationType === "store" ? "Toko" : transferData.sourceLocationType || "Lokasi"})</div>
+                <div class="info-item"><strong>Ke:</strong> ${transferData.destinationLocationName} (${transferData.destinationLocationType === "warehouse" ? "Gudang" : transferData.destinationLocationType === "store" ? "Toko" : transferData.destinationLocationType || "Lokasi"})</div>
+                <div class="info-item"><strong>Total Item:</strong> ${transferData.totalItems || 0}</div>
+                ${transferData.notes ? `<div class="info-item"><strong>Catatan:</strong> ${transferData.notes}</div>` : ""}
+            </div>
+        </div>
+
+        <table class="products-table">
+            <thead>
+                <tr>
+                    <th style="width: 5%;">#</th>
+                    <th style="width: 35%;">Nama Produk</th>
+                    <th style="width: 20%;">SKU</th>
+                    <th style="width: 10%; text-align: center;">Jumlah</th>
+                    <th style="width: 15%; text-align: right;">Harga Satuan</th>
+                    <th style="width: 15%; text-align: right;">Total Nilai</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${productsHTML}
+            </tbody>
+        </table>
+
+        <div class="summary">
+            <div class="summary-item">
+                <span>Total Item:</span>
+                <span>${transferData.totalItems || 0}</span>
+            </div>
+            <div class="summary-item">
+                <span>Total Produk:</span>
+                <span>${transferData.products?.length || 0}</span>
+            </div>
+            <div class="summary-item total">
+                <span>Total Nilai Transfer:</span>
+                <span>Rp ${totalValue.toLocaleString("id-ID")}</span>
+            </div>
+        </div>
+
+        <div class="signature-section">
+            <div class="signature-box">
+                <div class="signature-line">Disiapkan Oleh</div>
+            </div>
+            <div class="signature-box">
+                <div class="signature-line">Diterima Oleh</div>
+            </div>
+        </div>
+
+        <div class="footer">
+            <p>Dokumen ini dibuat secara otomatis oleh Sistem Manajemen Inventori StockPoint Pro</p>
+            <p>Dibuat pada ${currentDate} pukul ${currentTime}</p>
+        </div>
+    </body>
+    </html>
+    `;
+  }
 }
 
 // Create a singleton instance

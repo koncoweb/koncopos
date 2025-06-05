@@ -635,7 +635,11 @@ export const useInventoryData = (initialProducts: Product[] = []) => {
       hasVariations: !!product.hasVariations,
       variations: product.hasVariations ? variationsData : {},
       // Add metadata fields
-      lastModifiedBy: firebaseService.getCurrentUser()?.uid || "unknown",
+      lastModifiedBy:
+        firebaseService.getCurrentUser()?.displayName ||
+        firebaseService.getCurrentUser()?.email?.split("@")[0] ||
+        firebaseService.getCurrentUser()?.uid ||
+        "unknown",
       // Note: updatedAt is set in saveProductToFirebase based on whether it's a create or update operation
     };
 
